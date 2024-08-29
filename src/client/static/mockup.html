@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Web Page</title>
+  <style>
+    #frame {
+      padding: 1em;
+
+      aspect-ratio: 16 / 9;
+      width: 850px;
+      background-color: darkslategray;
+
+      display: flex;
+      flex-direction: row;
+      justify-content: space-around;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .container {
+      width: 350px;
+
+      margin: 1em;
+      border: solid black 1px;
+      border-radius: .5em;
+      padding: 1em;
+
+      background-color: white;
+    }
+
+    .container :first-child {
+      margin-top: 0;
+    }
+
+    .container :last-child {
+      margin-bottom: 0;
+    }
+
+    .container h1 {
+      font-size: 1.5em;
+      margin: 0;
+    }
+
+    .container p.subtitle {
+      margin: .2em 0;
+      color: gray;
+      font-style: italic;
+    }
+
+    .poll .controls {
+      float: right;
+    }
+
+    .poll ol:not(.flipped) li:nth-child(odd) {
+      background-color: lightgray;
+    }
+    .poll ol.flipped li:nth-child(even) {
+      background-color: lightgray;
+    }
+
+    .poll ol {
+      margin: .5em 0;
+      padding: 0;
+    }
+
+    .poll li {
+      list-style-type: none;
+      margin: .25em 0;
+      padding: .25em 0;
+    }
+
+    .poll li.placeholder {
+      background-color: inherit !important;
+      color: gray;
+    }
+
+    #results p.result {
+      background-color: lightskyblue;
+      margin: 8px 0;
+      border: solid turquoise 1px;
+      border-radius: .2em;
+      padding: .2em;
+      overflow: visible;
+      text-wrap: nowrap;
+    }
+
+    #results .result.eliminated {
+      background-color: unset;
+      color: darkgray;
+      border: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="frame">
+
+    <div class="container poll" id="poll">
+      <h1>What should we have for lunch?</h1>
+      <p class="subtitle">Choose and order your preferences.</p>
+      <ol>
+        <li class="placeholder">❔ No choices made</li>
+      </ol>
+      <hr/>
+      <ol>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍔 Burger</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍕 Pizza</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍜 Ramen</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍣 Sushi</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+      </ol>
+    </div>
+
+    <div class="container poll" id="ballot">
+      <h1>What should we have for lunch?</h1>
+      <p class="subtitle">Choose and order your preferences.</p>
+      <ol>
+        <li>
+          <span class='icon'>1️⃣</span>
+          <span class='label'>🍕 Pizza</span>
+          <span class='controls'>
+            ⬆️⬇️
+          </span>
+        </li>
+        <li>
+          <span class='icon'>2️⃣</span>
+          <span class='label'>🍣 Sushi</span>
+          <span class='controls'>
+            ⬆️⬇️
+          </span>
+        </li>
+      </ol>
+      <hr/>
+      <ol>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍔 Burger</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+        <li>
+          <span class='icon'>⬜</span>
+          <span class='label'>🍜 Ramen</span>
+          <span class='controls'>
+            1️⃣2️⃣3️⃣
+          </span>
+        </li>
+      </ol>
+
+    </div>
+
+    <div class="container" id="results">
+      <h1>What should we have for lunch?</h1>
+      <p class="subtitle">Determined in 2 rounds</p>
+      <p class="result" style="width: calc(100% - .5em);">#1 - 🍣 Sushi (4 votes)</p>
+      <p class="result" style="width: calc(50% - .5em);">#2 - 🍕 Pizza (2 votes)</p>
+      <p class="result" style="width: calc(25% - .5em);">#3 - 🍜 Ramen (1 vote)</p>
+      <p class="result eliminated">X - 🍔 Burger (eliminated)</p>
+    </div>
+
+  </div>
+</div>
+</body>
+
+</html>
