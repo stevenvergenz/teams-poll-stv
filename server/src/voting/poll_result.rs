@@ -89,17 +89,9 @@ impl<'a> PollResult<'a> {
                 let loser = tally.iter()
                     .filter(|(_, votes)| votes.len() == min_votes)
                     .min_by(|(a, _), (b, _)| {
-                        let a_val = *popularity.get(*a).unwrap_or(&0f64);
-                        let b_val = *popularity.get(*b).unwrap_or(&0f64);
-                        if a_val < b_val {
-                            std::cmp::Ordering::Less
-                        }
-                        else if a_val > b_val {
-                            std::cmp::Ordering::Greater
-                        }
-                        else {
-                            std::cmp::Ordering::Equal
-                        }
+                        let a_pop = *popularity.get(*a).unwrap_or(&0f64);
+                        let b_pop = *popularity.get(*b).unwrap_or(&0f64);
+                        a_pop.partial_cmp(&b_pop).unwrap() // panics on NaN
                     }).unwrap().0;
                 println!("No winner after round {round}, eliminating {loser}");
                 result.eliminated.push(*loser);
