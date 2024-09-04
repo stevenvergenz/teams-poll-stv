@@ -17,23 +17,23 @@ pub struct Poll<'a> {
 }
 
 #[derive(Debug)]
-pub struct PollOption<'a> {
+pub struct PollOption {
     pub id: u32,
     pub poll_id: u32,
-    pub description: &'a str,
+    pub description: String,
 }
 
 impl<'a> Poll<'a> {
     pub fn new(
         id: u32,
         title: &'a str,
-        options: &'a [&'a str],
+        options: Vec<String>,
         winner_count: u8,
         write_ins_allowed: bool,
         close_scheduled_for: Option<DateTime<Utc>>,
         created_by: &User
-    ) -> (Poll<'a>, Vec<PollOption<'a>>) {
-        let mut poll = Poll {
+    ) -> (Poll<'a>, Vec<PollOption>) {
+        let poll = Poll {
             id,
             title,
             option_ids: (0..(options.len() as u32)).collect(),
@@ -46,11 +46,11 @@ impl<'a> Poll<'a> {
         };
 
         let mut full_options: Vec<PollOption> = vec![];
-        for (id, text) in poll.option_ids.iter().zip(options.iter()) {
+        for (id, text) in poll.option_ids.iter().zip(options) {
             full_options.push(PollOption {
                 id: *id,
                 poll_id: poll.id,
-                description: *text,
+                description: text,
             });
         }
 
@@ -82,15 +82,13 @@ impl Ballot {
 #[derive(Debug)]
 pub struct User<'a> {
     pub id: u32,
-    pub federated_id: &'a str,
     pub display_name: &'a str,
 }
 
 impl<'a> User<'a> {
-    pub const fn new(id: u32, federated_id: &'a str, display_name: &'a str) -> User<'a> {
+    pub const fn new(id: u32, display_name: &'a str) -> User<'a> {
         User {
             id,
-            federated_id,
             display_name,
         }
     }

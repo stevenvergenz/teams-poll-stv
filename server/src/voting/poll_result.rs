@@ -121,17 +121,81 @@ mod tests {
     use super::super::poll::*;
     use super::*;
 
-    static OPTIONS: [&str; 5] = [
-        "Option 1", "Option 2", "Option 3", "Option 4", "Option 5",
+    static NAMES: [&str; 26] = [
+        "Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Judy",
+        "Kat", "Larry", "Mallory", "Nancy", "Oscar", "Peggy", "Quentin", "Randy", "Steve", "Trent",
+        "Ursula", "Victor", "Wendy", "Xavier", "Yvonne", "Zelda",
     ];
 
-    static USERS: [User; 5] = [
-        User::new(1, "1", "Alice"),
-        User::new(2, "2", "Bob"),
-        User::new(3, "3", "Charlie"),
-        User::new(4, "4", "David"),
-        User::new(5, "5", "Eve"),
-    ];
+    fn generate_poll(mut vote_prefs: Vec<Vec<u32>>) -> (Poll<'static>, Vec<PollOption>, Vec<User<'static>>, Vec<Ballot>) {
+        assert!(vote_prefs.len() > 0, "At least one ballot must have a first preference");
+
+        let option_count = vote_prefs[0].len();
+        assert!(option_count > 0, "The poll must have at least one option");
+
+        let voter_count = vote_prefs[0].iter().sum();
+        assert!(voter_count > 0, "At least one vote must be cast");
+
+        let users: Vec<User> = (0..voter_count)
+            .map(|i| User::new(i as u32, NAMES[i as usize]))
+            .collect();
+        let options: Vec<String> = (0..option_count)
+            .map(|i| format!("Option {i}"))
+            .collect();
+        let (poll, options) = Poll::new(0, "Test Poll", options, 1, false, None, &users[0]);
+        let mut ballots = vec![];
+
+        // for each preference round (first, second, etc.)
+        for round in &vote_prefs {
+
+            // stores the index of the ballot that will vote for the next available option
+            let mut ballot_id = 0;
+
+            // get the number of votes a particular option should get in this round
+            for (option, option_vote_count) in round.iter().enumerate() {
+
+                // cast the specified number of votes for this option
+                for _ in 0..*option_vote_count {
+
+                    // generate a new ballot if one doesn't yet exist
+                    if ballots.len() <= ballot_id {
+                        ballots.push(Ballot::new(&poll, &users[ballot_id], vec![]));
+                    }
+                    let ballot = ballots.get_mut(ballot_id).unwrap();
+
+                    // add a next-preferred vote to the ballot
+                    ballot.selection_ids.push(option as u32);
+                    ballot_id += 1;
+                }
+            }
+        }
+
+        (poll, options, users, ballots)
+    }
+
+    #[test]
+    fn validate_poll_generator() {
+        let (poll, options, users, ballots) = generate_poll(vec![
+            vec![3, 2, 1],
+            vec![2, 3],
+        ]);
+
+        assert_eq!(poll.option_ids, vec![0, 1, 2]);
+        assert_eq!(options.len(), 3);
+        assert_eq!(users.len(), 6);
+
+        let selections = vec![
+            vec![0, 0, 0, 1, 1, 2],
+            vec![0, 0, 1, 1, 1, 2],
+            vec![0, 1, 1, 2, 2],
+            vec![0, 0, 1, 1, 2],
+            vec![0, 0, 1, 1, 2],
+            vec![0, 1, 1, 2, 2],
+        ];
+        for (i, ballot) in ballots.iter().enumerate() {
+
+        }
+    }
 
     #[test]
     fn empty_poll_halts() {
@@ -146,7 +210,9 @@ mod tests {
         );
         let ballots = vec![];
         let result = PollResult::evaluate(&poll, ballots, 100);
-        assert_eq!(result.tally.len(), 0);
+        assert_eq!(result.tally, vec![]);
+        assert_eq!(result.winners, vec![] as Vec<&u32>);
+        assert_eq!(result.eliminated, vec![] as Vec<&u32>);
     }
 
     #[test]
@@ -169,6 +235,7 @@ mod tests {
         let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100);
         assert_eq!(result.tally, &[(&0, 2), (&1, 1), (&2, 0), (&3, 0), (&4, 0)]);
         assert_eq!(result.winners, &[&0]);
+        assert_eq!(result.eliminated, vec![] as Vec<&u32>);
     }
 
     #[test]
@@ -193,6 +260,7 @@ mod tests {
         let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100);
         assert_eq!(result.tally, &[(&0, 3), (&1, 2), (&2, 0), (&3, 0), (&4, 0)]);
         assert_eq!(result.winners, &[&0]);
+        assert_eq!(result.eliminated, &[&2]);
     }
 
     #[test]
@@ -215,5 +283,6 @@ mod tests {
         let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100);
         assert_eq!(result.tally, &[(&0, 2), (&1, 1), (&2, 0), (&3, 0), (&4, 0)]);
         assert_eq!(result.winners, &[&0]);
+        assert_eq!(result.eliminated, &[&2]);
     }
 }
