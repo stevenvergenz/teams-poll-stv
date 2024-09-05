@@ -1,101 +1,59 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+use serde::Serialize;
+use super::id::{Id, RelativeId, WeakId};
+use super::voter::Voter;
 
-#[derive(Debug)]
+#[derive(Serialize)]
 pub struct Poll<'a> {
-    pub id: u32,
+    pub id: Id,
     pub title: &'a str,
-    pub option_ids: Vec<u32>,
+    pub option_ids: Vec<WeakId>,
 
     pub winner_count: u8,
     pub write_ins_allowed: bool,
     pub close_scheduled_for: Option<DateTime<Utc>>,
 
-    pub created_by_id: u32,
+    pub created_by_id: Id,
     pub created_at: DateTime<Utc>,
     pub closed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug)]
+#[derive(Serialize)]
 pub struct PollOption {
-    pub id: u32,
-    pub poll_id: u32,
+    pub id: RelativeId,
     pub description: String,
 }
 
 impl<'a> Poll<'a> {
     pub fn new(
-        id: u32,
+        id: Id,
         title: &'a str,
         options: Vec<String>,
         winner_count: u8,
         write_ins_allowed: bool,
         close_scheduled_for: Option<DateTime<Utc>>,
-        created_by: &User
+        created_by: &Voter
     ) -> (Poll<'a>, Vec<PollOption>) {
         let poll = Poll {
             id,
             title,
-            option_ids: (0..(options.len() as u32)).collect(),
+            option_ids: (0..(options.len() as u32)).map(|i| WeakId(i)).collect(),
             winner_count,
             write_ins_allowed,
             close_scheduled_for,
-            created_by_id: created_by.id,
+            created_by_id: created_by.id.clone(),
             created_at: Utc::now(),
             closed_at: None,
         };
 
         let mut full_options: Vec<PollOption> = vec![];
-        for (id, text) in poll.option_ids.iter().zip(options) {
+        for (opt_id, text) in poll.option_ids.iter().zip(options) {
             full_options.push(PollOption {
-                id: *id,
-                poll_id: poll.id,
+                id: RelativeId(poll.id.clone(), opt_id.clone()),
                 description: text,
             });
         }
 
         (poll, full_options)
-    }
-}
-
-#[derive(Debug)]
-pub struct Ballot {
-    pub poll_id: u32,
-    pub voter_id: u32,
-    pub selection_ids: Vec<u32>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-impl Ballot {
-    pub fn new(poll: &Poll, voter: &User, selections: Vec<u32>) -> Ballot {
-        Ballot {
-            poll_id: poll.id,
-            voter_id: voter.id,
-            selection_ids: selections,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
-    }
-}
-
-impl std::fmt::Display for Ballot {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "({}: {:?})", self.voter_id, self.selection_ids)
-    }
-}
-
-#[derive(Debug)]
-pub struct User {
-    pub id: u32,
-    pub display_name: String,
-}
-
-impl User {
-    pub const fn new(id: u32, display_name: String) -> User {
-        User {
-            id,
-            display_name,
-        }
     }
 }
