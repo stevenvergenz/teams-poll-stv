@@ -1,9 +1,36 @@
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 use chrono::{DateTime, Utc};
 use rand::{self, SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::Serialize;
-use uuid::Uuid;
 use super::poll::{Poll, Ballot};
+
+/// A displayable version of HashMap<&u32, Vec<&Ballot>>
+struct Tally<'a>(&'a HashMap<&'a u32, Vec<&'a Ballot>>);
+impl<'a> Display for Tally<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let mut sorted_tally: Vec<(&u32, usize)> = self.0.iter().map(|(id, votes)| (*id, votes.len())).collect();
+        sorted_tally.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+
+        write!(f, "Tally [")?;
+        for (id, votes) in sorted_tally {
+            write!(f, "({}: {}), ", id, votes)?;
+        }
+        write!(f, "]")
+    }
+}
+
+/// A displayable version of Vec<&Ballot>
+struct BallotList<'a>(pub &'a Vec<&'a Ballot>);
+impl<'a> std::fmt::Display for BallotList<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "BallotList [")?;
+        for ballot in self.0.iter() {
+            write!(f, "{}, ", ballot)?;
+        }
+        write!(f, "]")
+    }
+}
 
 #[derive(Serialize, Debug)]
 pub struct PollResult<'a> {
@@ -17,6 +44,8 @@ pub struct PollResult<'a> {
 
 impl<'a> PollResult<'a> {
     pub fn evaluate(poll: &'a Poll, ballots: Vec<&'a Ballot>, max_rounds: u32, rng_seed: &[u8; 32]) -> PollResult<'a> {
+        println!("{}", BallotList(&ballots));
+
         let mut result = PollResult {
             poll_id: &poll.id,
             evaluated_at: Utc::now(),
@@ -66,15 +95,13 @@ impl<'a> PollResult<'a> {
                     // add this ballot to the list of votes for this option
                     let current_tally = tally.get_mut(id).unwrap();
                     current_tally.push(ballot);
-                    println!("Tally for {id} is now {}", current_tally.len());
                     if current_tally.len() == threshold {
                         result.winners.push(id);
                     }
                 }
-                else {
-                    println!("Dropping user {}", ballot.voter_id);
-                }
             }
+
+            println!("{}", Tally(&tally));
 
             if result.winners.len() > poll.winner_count as usize {
                 panic!("How did we get too many winners?");
@@ -83,9 +110,8 @@ impl<'a> PollResult<'a> {
                 println!("Winners: {:?}", result.winners);
                 break;
             }
-            else {
-                // find the option with the fewest votes, breaking ties by popularity
-                let min_votes = tally.iter().map(|(_, votes)| votes.len()).min().unwrap();
+            // find the option with the fewest votes, breaking ties by popularity
+            else if let Some(min_votes) = tally.iter().map(|(_, votes)| votes.len()).min() {
                 let loser = tally.iter()
                     .filter(|(_, votes)| votes.len() == min_votes)
                     .min_by(|(a, _), (b, _)| {
@@ -96,6 +122,10 @@ impl<'a> PollResult<'a> {
                 println!("No winner after round {round}, eliminating {loser}");
                 result.eliminated.push(*loser);
                 ballots = tally.remove(*loser).unwrap();
+            }
+            else {
+                println!("No ballots remaining, inconclusive");
+                break;
             }
         }
 
@@ -121,84 +151,81 @@ mod tests {
     use super::super::poll::*;
     use super::*;
 
-    static NAMES: [&str; 26] = [
-        "Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Judy",
-        "Kat", "Larry", "Mallory", "Nancy", "Oscar", "Peggy", "Quentin", "Randy", "Steve", "Trent",
-        "Ursula", "Victor", "Wendy", "Xavier", "Yvonne", "Zelda",
-    ];
-
     static RNG_SEED: [u8; 32] = [
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     ];
 
-    fn generate_poll(vote_prefs: Vec<Vec<u32>>) -> (Poll<'static>, Vec<PollOption>, Vec<User<'static>>, Vec<Ballot>) {
-        assert!(vote_prefs.len() > 0);
-        let option_count = vote_prefs[0].len();
-        let voter_count = vote_prefs[0].iter().sum();
+    /// Generate a poll, options, voters, and ballots from a list of vote preferences
+    fn generate_poll(winner_count: u8, mut vote_prefs: Vec<Vec<u32>>) -> (Poll<'static>, Vec<PollOption>, Vec<User>, Vec<Ballot>) {
+        let voter_count = vote_prefs.len();
+        let mut option_count = 0;
+        for ballot in &vote_prefs {
+            for vote in ballot {
+                option_count = option_count.max(*vote);
+            }
+        }
 
         let users: Vec<User> = (0..voter_count)
-            .map(|i| User::new(i as u32, NAMES[i as usize]))
+            .map(|i| User::new(i as u32, format!("Voter {i}")))
             .collect();
-        let options: Vec<String> = (0..option_count)
+        let options: Vec<String> = (0..=option_count)
             .map(|i| format!("Option {i}"))
             .collect();
-        let (poll, options) = Poll::new(0, "Test Poll", options, 1, false, None, &users[0]);
-        let mut ballots: Vec<Ballot> = vec![];
-
-        // for each preference round (first, second, etc.)
-        for (round_num, round) in vote_prefs.iter().enumerate() {
-
-            // get the number of votes a particular option should get in this round
-            for (option, option_vote_count) in round.iter().enumerate() {
-
-                // cast the specified number of votes for this option
-                for _ in 0..*option_vote_count {
-
-                    // find a ballot with no vote for the current round, who hasn't already voted for this option
-                    if let Some(ballot) = ballots.iter_mut().find(
-                        |b| b.selection_ids.len() == round_num && !b.selection_ids.contains(&(option as u32))
-                    ) {
-                        ballot.selection_ids.push(option as u32);
-                    }
-                    // generate a new ballot if one doesn't yet exist
-                    else if round_num == 0 {
-                        let ballot = Ballot::new(&poll, &users[ballots.len()], vec![option as u32]);
-                        ballots.push(ballot);
-                    }
-                    else {
-                        panic!("Round {round_num} has more votes than the previous round");
-                    }
-                }
-            }
-
-            ballots.reverse();
+        let (poll, options) = Poll::new(0, "Test Poll", options, winner_count, false, None, &users[0]);
+        let mut ballots = vec![];
+        while let Some(prefs) = vote_prefs.pop() {
+            let ballot = Ballot::new(&poll, &users[ballots.len()], prefs);
+            ballots.push(ballot);
         }
+        ballots.reverse();
+
+        // let mut rng = StdRng::from_seed(RNG_SEED);
+
+        // // for each preference round (first, second, etc.)
+        // for round_num in vote_prefs.iter().enumerate() {
+
+        //     // get the number of votes a particular option should get in this round
+        //     for (option, option_vote_count) in round.iter().enumerate() {
+
+        //         // cast the specified number of votes for this option
+        //         for _ in 0..*option_vote_count {
+
+        //             // find a ballot with no vote for the current round, who hasn't already voted for this option
+        //             if let Some(ballot) = ballots.iter_mut().filter(
+        //                 |b| b.selection_ids.len() == round_num && !b.selection_ids.contains(&(option as u32))
+        //             ).choose(&mut rng) {
+        //                 ballot.selection_ids.push(option as u32);
+        //             }
+        //             // generate a new ballot if one doesn't yet exist
+        //             else if round_num == 0 {
+        //                 let ballot = Ballot::new(&poll, &users[ballots.len()], vec![option as u32]);
+        //                 ballots.push(ballot);
+        //             }
+        //             else {
+        //                 panic!("Round {round_num} has more votes than the previous round");
+        //             }
+        //         }
+        //     }
+
+        //     ballots.reverse();
+        // }
 
         (poll, options, users, ballots)
     }
 
     #[test]
     fn validate_poll_generator() {
-        let (poll, options, users, ballots) = generate_poll(vec![
+        let (poll, options, users, ballots) = generate_poll(1, vec![
             vec![3, 2, 1],
             vec![2, 3],
         ]);
 
-        assert_eq!(poll.option_ids, vec![0, 1, 2]);
-        assert_eq!(options.len(), 3);
-        assert_eq!(users.len(), 6);
-
-        let selections = vec![
-            vec![0, 1],
-            vec![0, 1],
-            vec![0, 1],
-            vec![1],
-            vec![1, 0],
-            vec![2, 0],
-        ];
-        for (i, ballot) in ballots.iter().enumerate() {
-            assert_eq!(ballot.selection_ids, selections[i], "Ballot {i} is not as expected");
-        }
+        assert_eq!(poll.option_ids, vec![0, 1, 2, 3], "Check option ids");
+        assert_eq!(options.len(), 4, "Check option count");
+        assert_eq!(users.len(), 2, "Check user count");
+        assert_eq!(ballots.len(), 2, "Check ballot count");
+        assert_eq!(ballots[0].selection_ids, vec![3, 2, 1], "Check ballot 1");
+        assert_eq!(ballots[1].selection_ids, vec![2, 3], "Check ballot 2");
     }
 
     #[test]
@@ -210,53 +237,89 @@ mod tests {
             1,
             false,
             None,
-            &User::new(0, "No user"),
+            &User::new(0, String::from("No user")),
         );
         let ballots = vec![];
-        let result = PollResult::evaluate(&poll, ballots, 100, &RNG_SEED);
-        assert_eq!(result.tally, vec![]);
-        assert_eq!(result.winners, vec![] as Vec<&u32>);
-        assert_eq!(result.eliminated, vec![] as Vec<&u32>);
+        let result = PollResult::evaluate(&poll, ballots, 1, &RNG_SEED);
+        assert_eq!(result.winners, vec![] as Vec<&u32>, "Check winners");
+        assert_eq!(result.eliminated, vec![] as Vec<&u32>, "Check eliminated");
+        assert_eq!(result.tally, vec![], "Check tally");
     }
 
     #[test]
     fn simple_majority() {
-        let (poll, _, _, ballots) = generate_poll(vec![
-            vec![2, 1, 0, 0, 0],
+        let (poll, _, _, ballots) = generate_poll(1, vec![
+            vec![2],
+            vec![1],
+            vec![1],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100, &RNG_SEED);
-        assert_eq!(result.tally, &[(&0, 2), (&1, 1), (&2, 0), (&3, 0), (&4, 0)]);
-        assert_eq!(result.winners, &[&0]);
-        assert_eq!(result.eliminated, vec![] as Vec<&u32>);
+        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 1, &RNG_SEED);
+        assert_eq!(result.winners, &[&1], "Check winners");
+        assert_eq!(result.eliminated, vec![] as Vec<&u32>, "Check eliminated");
+        assert_eq!(result.tally, &[(&1, 2), (&2, 1), (&0, 0)], "Check tally");
     }
 
     #[test]
-    fn simple_three_rounds() {
-        let (poll, _, _, ballots) = generate_poll(vec![
-            vec![4, 3, 2, 1],
-            vec![4, 4, 2],
+    fn simple_two_rounds() {
+        let (poll, _, _, ballots) = generate_poll(1, vec![
+            // 5 votes, 1 seat = 3 votes to win
+            vec![0],
+            vec![0],
+            vec![1],
+            vec![1],
+            vec![2, 0],
         ]);
 
-        dbg!(&ballots);
-
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100, &RNG_SEED);
-        assert_eq!(result.winners, &[&0], "Winners correct");
-        assert_eq!(result.eliminated, &[&3, &2], "Eliminated correct");
+        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        assert_eq!(result.winners, &[&0], "Check winners");
+        assert_eq!(result.eliminated, &[&2], "Check eliminated");
+        assert_eq!(result.tally, &[(&0, 3), (&1, 2), (&2, 0)], "Check tally");
     }
 
-    // #[test]
-    // fn tied_elim() {
-    //     let (poll, _, _, ballots) = generate_poll(vec![
-    //         vec![1, 1, 1, 0, 0],
-    //         vec![1],
-    //     ]);
+    #[test]
+    fn tied_elim() {
+        let (poll, _, _, ballots) = generate_poll(1, vec![
+            vec![0],
+            vec![0, 1],
+            vec![1, 0],
+            vec![2, 0],
+        ]);
 
-    //     dbg!(&ballots);
+        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        assert_eq!(result.winners, &[&0], "Check winners");
+        assert_eq!(result.eliminated, &[&2], "Check eliminated");
+        assert_eq!(result.tally, &[(&0, 3), (&1, 1), (&2, 0)], "Check tally");
+    }
 
-    //     let result = PollResult::evaluate(&poll, ballots.iter().collect(), 100);
-    //     assert_eq!(result.tally, &[(&0, 2), (&1, 1), (&2, 0), (&3, 0), (&4, 0)]);
-    //     assert_eq!(result.winners, &[&0]);
-    //     assert_eq!(result.eliminated, &[&2]);
-    // }
+    #[test]
+    fn two_winners_simple() {
+        let (poll, _, _, ballots) = generate_poll(2, vec![
+            vec![0],
+            vec![1],
+        ]);
+
+        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 1, &RNG_SEED);
+        assert_eq!(result.winners, &[&0, &1], "Check winners");
+        assert_eq!(result.eliminated, vec![] as Vec<&u32>, "Check eliminated");
+        assert_eq!(result.tally, &[(&0, 1), (&1, 1)], "Check tally");
+    }
+
+    #[test]
+    fn two_winners_two_rounds() {
+        let (poll, _, _, ballots) = generate_poll(2, vec![
+            // 6 votes, 2 seats = 3 votes to win
+            vec![0],
+            vec![0],
+            vec![1],
+            vec![1],
+            vec![2, 0],
+            vec![2, 1],
+        ]);
+
+        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        assert_eq!(result.winners, &[&1, &0], "Check winners");
+        assert_eq!(result.eliminated, &[&2], "Check eliminated");
+        assert_eq!(result.tally, &[(&0, 3), (&1, 3), (&2, 0)], "Check tally");
+    }
 }

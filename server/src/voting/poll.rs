@@ -79,14 +79,20 @@ impl Ballot {
     }
 }
 
-#[derive(Debug)]
-pub struct User<'a> {
-    pub id: u32,
-    pub display_name: &'a str,
+impl std::fmt::Display for Ballot {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "({}: {:?})", self.voter_id, self.selection_ids)
+    }
 }
 
-impl<'a> User<'a> {
-    pub const fn new(id: u32, display_name: &'a str) -> User<'a> {
+#[derive(Debug)]
+pub struct User {
+    pub id: u32,
+    pub display_name: String,
+}
+
+impl User {
+    pub const fn new(id: u32, display_name: String) -> User {
         User {
             id,
             display_name,
