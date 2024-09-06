@@ -2,10 +2,10 @@ mod ballot;
 mod id;
 mod poll;
 mod poll_result;
-mod voter;
+mod user;
 
 pub use ballot::Ballot;
 pub use id::{Id, RelativeId, WeakId};
-pub use poll::{Poll, PollOption};
+pub use poll::{CreatePollSettings, Poll, PollOption};
 pub use poll_result::PollResult;
-pub use voter::Voter;
+pub use user::User;

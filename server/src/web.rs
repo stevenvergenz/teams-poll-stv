@@ -4,15 +4,24 @@ mod poll_api;
 use std::env;
 use uuid::Uuid;
 use warp::Filter;
-use poll_api::get_poll;
+use poll_api::{new_poll, get_poll};
+
+use crate::voting::CreatePollSettings;
 
 pub async fn setup() {
     // Define the route
     let hello = warp::path::end()
         .map(|| warp::reply::html("Hello, World!"));
 
+    let new_poll = warp::post()
+        .and(warp::path!("api" / "poll"))
+        .and(warp::path::end())
+        .and(warp::body::json::<CreatePollSettings>())
+        .map(new_poll);
+
     let get_poll = warp::get()
         .and(warp::path!("api" / "poll" / Uuid))
+        .and(warp::path::end())
         .map(get_poll);
 
     // Define the static files route
@@ -27,6 +36,7 @@ pub async fn setup() {
 
     // Start the server
     let routes = hello
+        .or(new_poll)
         .or(get_poll)
         .or(static_files);
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;

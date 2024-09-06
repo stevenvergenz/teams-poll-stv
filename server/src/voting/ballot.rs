@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::fmt::{self, Display, Formatter};
 use super::id::{Id, WeakId};
 use super::poll::Poll;
-use super::voter::Voter;
+use super::user::User;
 
 #[derive(Debug)]
 pub struct Ballot {
@@ -14,7 +14,7 @@ pub struct Ballot {
 }
 
 impl Ballot {
-    pub fn new(poll: &Poll, voter: &Voter, selections: Vec<WeakId>) -> Ballot {
+    pub fn new(poll: &Poll, voter: &User, selections: Vec<WeakId>) -> Ballot {
         Ballot {
             poll_id: poll.id.clone(),
             voter_id: voter.id.clone(),
