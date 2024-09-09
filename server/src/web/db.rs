@@ -1,5 +1,12 @@
-use std::collections::HashMap;
+use std::env;
 
-use diesel::PgConnection;
+use dotenvy::dotenv;
+use diesel::{Connection, PgConnection};
 
-use super::super::voting::{Poll, PollOption, User, Id, RelativeId};
+pub fn establish_connection() -> PgConnection {
+    dotenv().ok();
+
+    let db_url = env::var("DATABASE_URL")
+        .expect("Environment variable 'DATABASE_URL' must be set");
+    PgConnection::establish(&db_url).unwrap()
+}

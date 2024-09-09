@@ -1,5 +1,7 @@
 mod db;
 mod poll_api;
+mod models;
+mod schema;
 
 use std::env;
 use uuid::Uuid;
