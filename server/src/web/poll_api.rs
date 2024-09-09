@@ -3,60 +3,36 @@ use uuid::Uuid;
 use warp::http::StatusCode;
 use warp::reply::{self, Reply, Response, WithStatus};
 
-use crate::voting::{CreatePollSettings, Id, Poll, User};
-use super::db::establish_connection;
+use crate::voting;
+use super::db::{establish_connection, models, schema};
 
-pub fn new_poll(options: CreatePollSettings) -> WithStatus<&'static str> {
-    reply::with_status("Created", StatusCode::CREATED)
+pub fn new_poll(options: voting::CreatePollSettings) -> Response {
+    let connection = &mut establish_connection();
+    let new_poll_result = diesel::insert_into(schema::polls::table)
+        .values(models::CreatePollSettings::from(options))
+        .returning(models::Poll::as_returning())
+        .get_result(connection);
+
+    let new_poll = match new_poll_result {
+        Err(err) => {
+            return reply::with_status(
+                format!("Error creating poll: {}", err),
+                StatusCode::BAD_REQUEST,
+            ).into_response();
+        },
+        Ok(p) => p,
+    };
+
+    // todo: insert options
+
+    reply::json(&new_poll).into_response()
 }
 
 pub fn get_poll(id: Uuid) -> Response {
-    // let owner = User::new(Id::new(), String::from("Steven"));
-    // match Poll::new(owner, CreatePollSettings {
-    //     id: Some(id),
-    //     title: String::from("Test Poll"),
-    //     options: vec![
-    //         String::from("Option 1"),
-    //         String::from("Option 2")
-    //     ],
-    //     winner_count: 1,
-    //     write_ins_allowed: false,
-    //     close_after_time: None,
-    //     close_after_votes: None,
-    // }) {
-    //     Ok(poll) => {
-    //         reply::json(&poll).into_response()
-    //     },
-    //     Err(err) => {
-    //         reply::with_status(err.to_string(), StatusCode::INTERNAL_SERVER_ERROR).into_response()
-    //     },
-    // }
-
-    // use self::schema::posts::dsl::*;
-
-    // let connection = &mut establish_connection();
-    // let results = posts
-    //     .filter(published.eq(true))
-    //     .limit(5)
-    //     .select(Post::as_select())
-    //     .load(connection)
-    //     .expect("Error loading posts");
-
-    // println!("Displaying {} posts", results.len());
-    // for post in results {
-    //     println!("{}", post.title);
-    //     println!("-----------\n");
-    //     println!("{}", post.body);
-    // }
-
-    // use super::schema::polls::dsl::*;
-    use super::schema::polls as Polls;
-    use super::models::Poll as PollModel;
-
     let connection = &mut establish_connection();
-    let results = Polls::table
-        .filter(Polls::id.eq(id))
-        .select(PollModel::as_select())
+    let results = schema::polls::table
+        .filter(schema::polls::id.eq(id))
+        .select(models::Poll::as_select())
         .load(connection)
         .expect("Error loading poll");
 
@@ -66,7 +42,6 @@ pub fn get_poll(id: Uuid) -> Response {
 
     // todo: fetch options
 
-    // todo: convert to poll object instead of db model
-
-    reply::json(results.iter().next().unwrap()).into_response()
+    let voting_poll = results.into_iter().next().unwrap().as_voting();
+    reply::json(&voting_poll).into_response()
 }

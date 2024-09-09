@@ -182,7 +182,7 @@ mod tests {
             write_ins_allowed: false,
             close_after_time: None,
             close_after_votes: None,
-        }).expect("Time out of bounds!");
+        });
         let mut ballots = vec![];
 
         while let Some(prefs) = vote_prefs.pop() {
@@ -220,7 +220,7 @@ mod tests {
             write_ins_allowed: false,
             close_after_time: None,
             close_after_votes: None,
-        }).expect("Time out of bounds!");
+        });
         let ballots = vec![];
         let result = PollResult::evaluate(&poll, ballots, 1, &RNG_SEED);
         assert_eq!(result.winners, vec![] as Vec<WeakId>, "Check winners");

@@ -18,13 +18,13 @@ pub struct CreatePollSettings {
     #[serde(default = "default_write_ins_allowed")]
     pub write_ins_allowed: bool,
     #[serde(default = "default_close_after_time")]
-    pub close_after_time: Option<Duration>,
+    pub close_after_time: Option<DateTime<Utc>>,
     #[serde(default = "default_close_after_votes")]
     pub close_after_votes: Option<u32>,
 }
 const fn default_winner_count() -> u8 { 1 }
 const fn default_write_ins_allowed() -> bool { false }
-const fn default_close_after_time() -> Option<Duration> { None }
+const fn default_close_after_time() -> Option<DateTime<Utc>> { None }
 const fn default_close_after_votes() -> Option<u32> { None }
 
 #[derive(Serialize)]
@@ -60,7 +60,7 @@ impl Poll {
         write_ins_allowed,
         close_after_time,
         close_after_votes: close_after_num_votes
-    }: CreatePollSettings) -> Result<Poll, OutOfRangeError> {
+    }: CreatePollSettings) -> Poll {
         let mut poll = Poll {
             id: match id {
                 Some(uuid) => Id(uuid),
@@ -71,14 +71,7 @@ impl Poll {
             options: None,
             winner_count,
             write_ins_allowed,
-            close_after_time: match close_after_time {
-                None => None,
-                Some(duration) => {
-                    Utc::now().checked_add_signed(
-                        TimeDelta::from_std(duration)?,
-                    )
-                },
-            },
+            close_after_time,
             close_after_votes: close_after_num_votes,
 
             owner_id: owner.id.clone(),
@@ -97,6 +90,6 @@ impl Poll {
 
         poll.options = Some(full_options);
 
-        Ok(poll)
+        poll
     }
 }
