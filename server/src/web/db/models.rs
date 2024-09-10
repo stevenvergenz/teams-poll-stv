@@ -52,10 +52,12 @@ pub struct CreatePollSettings {
     pub write_ins_allowed: bool,
     pub close_after_time: Option<NaiveDateTime>,
     pub close_after_votes: Option<i32>,
+
+    pub owner_id: Uuid,
 }
 
 impl CreatePollSettings {
-    pub fn from(voting::CreatePollSettings {
+    pub fn from(owner_id: &Uuid, voting::CreatePollSettings {
         id,
         title,
         options: _,
@@ -71,11 +73,12 @@ impl CreatePollSettings {
             write_ins_allowed,
             close_after_time: close_after_time.map(|t| t.naive_utc()),
             close_after_votes: close_after_votes.map(|v| v as i32),
+            owner_id: owner_id.clone(),
         }
     }
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = schema::polloptions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct PollOption {
@@ -84,7 +87,7 @@ pub struct PollOption {
     pub description: String,
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
