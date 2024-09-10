@@ -11,16 +11,14 @@ CREATE TABLE IF NOT EXISTS Polls (
     write_ins_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     close_after_time TIMESTAMP,
     close_after_votes INTEGER,
-    owner_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    closed_at TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES Users (id) ON DELETE CASCADE
+    owner_id UUID NOT NULL REFERENCES Users (id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS PollOptions (
-    poll_id UUID NOT NULL,
+    poll_id UUID NOT NULL REFERENCES Polls (id) ON DELETE CASCADE,
     id INTEGER NOT NULL,
     description VARCHAR(300) NOT NULL,
-    PRIMARY KEY (poll_id, id),
-    FOREIGN KEY (poll_id) REFERENCES Polls (id) ON DELETE CASCADE
+    PRIMARY KEY (poll_id, id)
 );

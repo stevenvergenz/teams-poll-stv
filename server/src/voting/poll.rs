@@ -1,11 +1,32 @@
-use std::time::Duration;
-
-use chrono::{DateTime, OutOfRangeError, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use serde::{self, Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::id::{Id, RelativeId, WeakId};
+use super::id::{Id, WeakId};
 use super::user::User;
+
+mod defaults {
+    pub mod title {
+        pub fn update() -> Option<String> { None }
+    }
+    pub mod winner_count {
+        pub fn create() -> u8 { 1 }
+        pub fn update() -> Option<u8> { None }
+    }
+    pub mod write_ins_allowed {
+        pub fn create() -> bool { false }
+        pub fn update() -> Option<bool> { None }
+    }
+    pub mod close_after_time {
+        use chrono::{DateTime, Utc};
+        pub fn create() -> Option<DateTime<Utc>> { None }
+        pub fn update() -> Option<Option<DateTime<Utc>>> { None }
+    }
+    pub mod close_after_votes {
+        pub fn create() -> Option<u32> { None }
+        pub fn update() -> Option<Option<u32>> { None }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePollSettings {
@@ -13,21 +34,31 @@ pub struct CreatePollSettings {
     pub title: String,
     pub options: Vec<String>,
 
-    #[serde(default = "default_winner_count")]
+    #[serde(default = "defaults::winner_count::create")]
     pub winner_count: u8,
-    #[serde(default = "default_write_ins_allowed")]
+    #[serde(default = "defaults::write_ins_allowed::create")]
     pub write_ins_allowed: bool,
-    #[serde(default = "default_close_after_time")]
+    #[serde(default = "defaults::close_after_time::create")]
     pub close_after_time: Option<DateTime<Utc>>,
-    #[serde(default = "default_close_after_votes")]
+    #[serde(default = "defaults::close_after_votes::create")]
     pub close_after_votes: Option<u32>,
 }
-const fn default_winner_count() -> u8 { 1 }
-const fn default_write_ins_allowed() -> bool { false }
-const fn default_close_after_time() -> Option<DateTime<Utc>> { None }
-const fn default_close_after_votes() -> Option<u32> { None }
 
-#[derive(Serialize)]
+#[derive(Debug, Deserialize)]
+pub struct UpdatePollSettings {
+    #[serde(default = "defaults::title::update")]
+    pub title: Option<String>,
+    #[serde(default = "defaults::winner_count::update")]
+    pub winner_count: Option<u8>,
+    #[serde(default = "defaults::write_ins_allowed::update")]
+    pub write_ins_allowed: Option<bool>,
+    #[serde(default = "defaults::close_after_time::update")]
+    pub close_after_time: Option<Option<DateTime<Utc>>>,
+    #[serde(default = "defaults::close_after_votes::update")]
+    pub close_after_votes: Option<Option<u32>>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Poll {
     pub id: Id,
     pub title: String,
@@ -45,9 +76,9 @@ pub struct Poll {
     pub closed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct PollOption {
-    pub id: RelativeId,
+    pub id: WeakId,
     pub description: String,
 }
 
@@ -83,7 +114,7 @@ impl Poll {
         let mut full_options: Vec<PollOption> = vec![];
         for (opt_id, text) in poll.option_ids.iter().zip(options.into_iter()) {
             full_options.push(PollOption {
-                id: RelativeId(poll.id.clone(), opt_id.clone()),
+                id: opt_id.clone(),
                 description: text,
             });
         }

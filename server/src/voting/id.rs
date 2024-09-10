@@ -22,7 +22,7 @@ impl Display for Id {
 }
 
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct WeakId(pub u32);
 impl WeakId {
     pub const fn nil() -> WeakId {
@@ -37,18 +37,5 @@ impl Display for WeakId {
 impl PartialEq<u32> for WeakId {
     fn eq(&self, other: &u32) -> bool {
         self.0 == *other
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RelativeId(pub Id, pub WeakId);
-impl RelativeId {
-    pub const fn nil() -> RelativeId {
-        RelativeId(Id::nil(), WeakId::nil())
-    }
-}
-impl Display for RelativeId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.0, self.1)
     }
 }

@@ -4,25 +4,31 @@ mod poll_api;
 use std::env;
 use uuid::Uuid;
 use warp::Filter;
-use poll_api::{new_poll, get_poll};
 
-use crate::voting::CreatePollSettings;
+use crate::voting::{CreatePollSettings, UpdatePollSettings};
 
 pub async fn setup() {
-    // Define the route
-    let hello = warp::path::end()
-        .map(|| warp::reply::html("Hello, World!"));
-
     let new_poll = warp::post()
         .and(warp::path!("api" / "poll"))
         .and(warp::path::end())
         .and(warp::body::json::<CreatePollSettings>())
-        .map(new_poll);
+        .map(poll_api::new);
 
     let get_poll = warp::get()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
-        .map(get_poll);
+        .map(poll_api::get);
+
+    let update_poll = warp::patch()
+        .and(warp::path!("api" / "poll" / Uuid))
+        .and(warp::path::end())
+        .and(warp::body::json::<UpdatePollSettings>())
+        .map(poll_api::update);
+
+    let delete_poll = warp::delete()
+        .and(warp::path!("api" / "poll" / Uuid))
+        .and(warp::path::end())
+        .map(poll_api::delete);
 
     // Define the static files route
     let cwd = env::current_exe().expect("Could not get current executable path");
@@ -35,9 +41,8 @@ pub async fn setup() {
         .and(warp::fs::dir(static_path));
 
     // Start the server
-    let routes = hello
-        .or(new_poll)
-        .or(get_poll)
+    let routes =
+        new_poll.or(get_poll).or(update_poll).or(delete_poll)
         .or(static_files);
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;
 }
