@@ -92,12 +92,39 @@ pub fn get(id: Uuid) -> Response {
 }
 
 pub fn update(id: Uuid, settings: voting::UpdatePollSettings) -> Response {
-    let mut query = diesel::update(schema::polls::table.find(id));
-    if let Some(title) = settings.title {
-        query.set(schema::polls::title.eq(title));
-    }
-
+    dbg!(&settings.close_after_time);
+    let db_settings = models::UpdatePollSettings::from(settings);
     let connection = &mut establish_connection();
+    match diesel::update(schema::polls::table.find(id))
+        .set(db_settings)
+        .execute(connection) {
+        Err(DbError::QueryBuilderError(_)) => {
+            reply::with_status(
+                format!("Cannot update poll {id} without new values"),
+                StatusCode::BAD_REQUEST,
+            ).into_response()
+        },
+        Err(err) => {
+            reply::with_status(
+                format!("Failed to update poll with id {id}: {err}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ).into_response()
+        },
+        Ok(_) => match get_internal(connection, &id) {
+            Err(err) => {
+                reply::with_status(
+                    format!("Update successful, but failed to retrieve result: {err:?}"),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ).into_response()
+            },
+            Ok(poll) => {
+                reply::with_status(
+                    reply::json(&poll),
+                    StatusCode::OK,
+                ).into_response()
+            },
+        },
+    }
 }
 
 pub fn delete(_id: Uuid) -> Response {

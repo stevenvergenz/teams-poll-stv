@@ -1,6 +1,6 @@
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, DateTime, Utc};
 use diesel::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::voting;
@@ -78,6 +78,40 @@ impl CreatePollSettings {
         };
 
         (poll_settings, options)
+    }
+}
+
+#[derive(Debug, AsChangeset)]
+#[diesel(table_name = schema::polls)]
+pub struct UpdatePollSettings {
+    pub title: Option<String>,
+    pub winner_count: Option<i32>,
+    pub write_ins_allowed: Option<bool>,
+    pub close_after_time: Option<Option<NaiveDateTime>>,
+    pub close_after_votes: Option<Option<i32>>,
+}
+
+impl UpdatePollSettings {
+    pub fn from(voting::UpdatePollSettings {
+        title,
+        winner_count,
+        write_ins_allowed,
+        close_after_time,
+        close_after_votes,
+    }: voting::UpdatePollSettings) -> Self {
+        Self {
+            title,
+            winner_count: winner_count.map(|x| x as i32),
+            write_ins_allowed,
+            close_after_time: close_after_time.map(|odt| {
+                odt.map(|dt| {
+                    dt.naive_utc()
+                })
+            }),
+            close_after_votes: close_after_votes.map(|ox| {
+                ox.map(|x| x as i32)
+            }),
+        }
     }
 }
 
