@@ -1,5 +1,6 @@
 mod db;
 mod poll_api;
+mod ballot_api;
 
 use std::env;
 use uuid::Uuid;
@@ -16,6 +17,7 @@ pub async fn setup() {
     let new_poll = warp::post()
         .and(warp::path!("api" / "poll"))
         .and(warp::path::end())
+        .and(warp::header::<Uuid>("user-id"))
         .and(warp::body::json::<CreatePollSettings>())
         .map(poll_api::new);
 
@@ -27,12 +29,14 @@ pub async fn setup() {
     let update_poll = warp::patch()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
+        .and(warp::header::<Uuid>("user-id"))
         .and(warp::body::json::<UpdatePollSettings>())
         .map(poll_api::update);
 
     let delete_poll = warp::delete()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
+        .and(warp::header::<Uuid>("user-id"))
         .map(poll_api::delete);
 
     // Define the static files route

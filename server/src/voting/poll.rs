@@ -10,7 +10,7 @@ pub fn create_write_ins_allowed_default() -> bool { false }
 pub fn create_close_after_time_default() -> Option<DateTime<Utc>> { None }
 pub fn create_close_after_votes_default() -> Option<u32> { None }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CreatePollSettings {
     pub id: Option<Uuid>,
     pub title: String,
@@ -24,6 +24,31 @@ pub struct CreatePollSettings {
     pub close_after_time: Option<DateTime<Utc>>,
     #[serde(default = "create_close_after_votes_default")]
     pub close_after_votes: Option<u32>,
+}
+impl CreatePollSettings {
+    pub fn apply(&mut self, patch: &UpdatePollSettings, new_options: &Vec<String>) {
+        if let Some(title) = &patch.title {
+            self.title = title.clone();
+        }
+
+        self.options.append(&mut new_options.clone());
+
+        if let Some(winner_count) = &patch.winner_count {
+            self.winner_count = *winner_count;
+        }
+
+        if let Some(write_ins_allowed) = &patch.write_ins_allowed {
+            self.write_ins_allowed = *write_ins_allowed;
+        }
+
+        if let Some(close_after_time) = &patch.close_after_time {
+            self.close_after_time = *close_after_time;
+        }
+
+        if let Some(close_after_votes) = &patch.close_after_votes {
+            self.close_after_votes = *close_after_votes;
+        }
+    }
 }
 
 fn update_title_default() -> Option<String> { None }
@@ -63,7 +88,19 @@ pub struct UpdatePollSettings {
     pub close_after_votes: Option<Option<u32>>,
 }
 
-#[derive(Serialize, Deserialize)]
+impl UpdatePollSettings {
+    pub fn new() -> Self {
+        Self {
+            title: None,
+            winner_count: None,
+            write_ins_allowed: None,
+            close_after_time: None,
+            close_after_votes: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct Poll {
     pub id: Id,
     pub title: String,
@@ -81,7 +118,7 @@ pub struct Poll {
     pub closed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct PollOption {
     pub id: WeakId,
     pub description: String,

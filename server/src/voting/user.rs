@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use super::id::Id;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct User {
     pub id: Id,
     pub display_name: String,

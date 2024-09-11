@@ -62,11 +62,11 @@ pub fn list() -> Response {
 
 }
 
-pub fn new(settings: voting::CreatePollSettings) -> Response {
+pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
     let connection = &mut establish_connection();
 
     // todo: get owner = session user
-    let owner = models::User { id: Uuid::nil(), display_name: String::from("Anonymous") };
+    let owner = models::User { id: user_id, display_name: String::from("Anonymous") };
     let user_upsert_result = diesel::insert_into(schema::users::table)
         .values(&owner)
         .on_conflict_do_nothing()
@@ -146,28 +146,33 @@ pub fn get(id: Uuid) -> Response {
     }
 }
 
-pub fn update(id: Uuid, settings: voting::UpdatePollSettings) -> Response {
+pub fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Response {
     let db_settings = models::UpdatePollSettings::from(settings);
     let connection = &mut establish_connection();
-    match diesel::update(schema::polls::table.find(id))
-        .set(db_settings)
-        .execute(connection) {
+    let update = diesel::update(
+        schema::polls::table.filter(
+            schema::polls::id.eq(poll_id)
+            .and(schema::polls::owner_id.eq(user_id))
+        )
+    ).set(db_settings).execute(connection);
+
+    match update {
         Err(DbError::QueryBuilderError(_)) => {
             reply::with_status(
-                format!("Cannot update poll {id} without new values"),
+                format!("Cannot update poll {poll_id} without new values"),
                 StatusCode::BAD_REQUEST,
             ).into_response()
         },
         Err(err) => {
             reply::with_status(
-                format!("Failed to update poll with id {id}: {err}"),
+                format!("Failed to update poll with id {poll_id}: {err}"),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ).into_response()
         },
         Ok(0) => {
-            reply::with_status(reply::reply(), StatusCode::NOT_FOUND).into_response()
+            reply::with_status(reply::reply(), StatusCode::FORBIDDEN).into_response()
         },
-        Ok(_) => match get_internal(connection, &id) {
+        Ok(_) => match get_internal(connection, &poll_id) {
             Err(err) => {
                 reply::with_status(
                     format!("Update successful, but failed to retrieve result: {err:?}"),
@@ -184,12 +189,19 @@ pub fn update(id: Uuid, settings: voting::UpdatePollSettings) -> Response {
     }
 }
 
-pub fn delete(id: Uuid) -> Response {
+pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     let connection = &mut establish_connection();
-    match diesel::delete(schema::polls::table.find(id)).execute(connection) {
+    let delete = diesel::delete(
+        schema::polls::table.filter(
+            schema::polls::id.eq(poll_id)
+            .and(schema::polls::owner_id.eq(user_id))
+        ),
+    ).execute(connection);
+
+    match delete {
         Err(err) => {
             reply::with_status(
-                format!("Failed to delete poll with id {id}: {err}"),
+                format!("Failed to delete poll with id {poll_id}: {err}"),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ).into_response()
         },
@@ -260,21 +272,50 @@ mod tests {
     use super::*;
     use warp::hyper::body;
 
+    async fn setup(
+        props: &voting::UpdatePollSettings, options: &Vec<String>,
+    ) -> Result<voting::Poll, Box<dyn StdError>> {
+        let mut req: voting::CreatePollSettings = serde_json::from_str(r#"
+        {
+            "title": "",
+            "options": []
+        }
+        "#)?;
+        req.apply(props, options);
+
+        let res = new(Uuid::nil(), req);
+        let res_bytes = body::to_bytes(res.into_body()).await?;
+        let res_poll: voting::Poll = serde_json::from_reader(res_bytes.as_ref())?;
+
+        Ok(res_poll)
+    }
+
+    async fn teardown(poll: voting::Poll) -> Result<(), Box<dyn StdError>> {
+        let res = delete(poll.id.0, poll.owner_id.0);
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        Ok(())
+    }
+
     #[tokio::test]
-    async fn insert() -> Result<(), Box<dyn StdError>> {
-        let res = new(voting::CreatePollSettings {
-            id: None,
-            title: String::from("Let's test this!"),
-            options: vec![String::from("One"), String::from("Two"), String::from("Three")],
-            winner_count: 2,
-            write_ins_allowed: true,
-            close_after_time: None,
-            close_after_votes: Some(10),
-        });
+    async fn create_delete() -> Result<(), Box<dyn StdError>> {
+        let req = voting::UpdatePollSettings {
+            title: Some(String::from("Basic crud test")),
+            ..voting::UpdatePollSettings::new()
+        };
+        let req_options = vec![String::from("A"), String::from("B"), String::from("C")];
+        let poll = setup(&req, &req_options).await?;
 
-        let body_bytes = body::to_bytes(res.into_body()).await?;
-        let res_poll: voting::Poll = serde_json::from_reader(body_bytes.as_ref())?;
+        assert_eq!(req.title.unwrap(), poll.title);
+        assert_eq!(req_options.len(), poll.option_ids.len());
+        assert!(poll.options.is_some());
 
+        for (i, option) in poll.options.as_ref().unwrap().iter().enumerate() {
+            assert_eq!(poll.option_ids[i].0, i as u32);
+            assert_eq!(option.id.0, i as u32);
+            assert_eq!(option.description, req_options[i]);
+        }
+
+        teardown(poll).await?;
         Ok(())
     }
 }
