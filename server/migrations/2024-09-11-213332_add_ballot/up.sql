@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS Ballots (
+    id SERIAL PRIMARY KEY,
+    poll_id UUID NOT NULL REFERENCES Polls (id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES Users (id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (poll_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS Votes (
+    ballot_id INTEGER NOT NULL REFERENCES Ballots (id) ON DELETE CASCADE,
+    option INTEGER NOT NULL,
+    preference INTEGER NOT NULL,
+    PRIMARY KEY (ballot_id, option, preference)
+);

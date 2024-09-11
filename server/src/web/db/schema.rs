@@ -1,6 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ballots (id) {
+        id -> Int4,
+        poll_id -> Uuid,
+        user_id -> Uuid,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     polloptions (poll_id, id) {
         poll_id -> Uuid,
         id -> Int4,
@@ -32,11 +41,24 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    votes (ballot_id, option, preference) {
+        ballot_id -> Int4,
+        option -> Int4,
+        preference -> Int4,
+    }
+}
+
+diesel::joinable!(ballots -> polls (poll_id));
+diesel::joinable!(ballots -> users (user_id));
 diesel::joinable!(polloptions -> polls (poll_id));
 diesel::joinable!(polls -> users (owner_id));
+diesel::joinable!(votes -> ballots (ballot_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    ballots,
     polloptions,
     polls,
     users,
+    votes,
 );

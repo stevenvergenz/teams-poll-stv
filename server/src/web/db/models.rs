@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use diesel::prelude::*;
 use serde::Serialize;
 use uuid::Uuid;
@@ -149,4 +149,32 @@ impl User {
             display_name: self.display_name,
         }
     }
+}
+
+#[derive(Associations, Queryable, Selectable, Identifiable, Insertable)]
+#[diesel(table_name = schema::ballots)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(belongs_to(User, foreign_key = user_id))]
+#[diesel(belongs_to(Poll, foreign_key = poll_id))]
+pub struct Ballot {
+    pub id: i32,
+    pub poll_id: Uuid,
+    pub user_id: Uuid,
+    pub created_at: NaiveDateTime,
+}
+
+impl Ballot {
+    pub fn into_voting(self, votes: Vec<Vote>) -> voting::Ballot {
+        todo!()
+    }
+}
+
+#[derive(Associations, Queryable, Selectable, Insertable)]
+#[diesel(table_name = schema::votes)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(belongs_to(Ballot, foreign_key = ballot_id))]
+pub struct Vote {
+    pub ballot_id: i32,
+    pub option: i32,
+    pub preference: i32,
 }

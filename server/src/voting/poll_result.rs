@@ -84,15 +84,10 @@ impl PollResult {
         for round in 1..=max_rounds {
             // count the votes for each option
             while let Some(ballot) = ballots.pop() {
-                // reject if the ballot is not for the poll being evaluated
-                if ballot.poll_id != poll.id {
-                    continue;
-                }
-
                 // find the vote from this ballot
                 let selection = ballot.selection_ids.iter()
                     .find(|id| !result.eliminated.contains(id) && !result.winners.contains(id));
-                println!("User {} votes for {selection:?}", ballot.voter_id);
+                println!("User {:?} votes for {selection:?}", ballot.voter);
 
                 // drop ballot if exhausted
                 if let Some(id) = selection {
@@ -186,7 +181,7 @@ mod tests {
         let mut ballots = vec![];
 
         while let Some(prefs) = vote_prefs.pop() {
-            let ballot = Ballot::new(&poll, &users[ballots.len()], prefs.iter().map(|i| WeakId(*i)).collect());
+            let ballot = Ballot::new(prefs.iter().map(|i| WeakId(*i)).collect());
             ballots.push(ballot);
         }
         ballots.reverse();
