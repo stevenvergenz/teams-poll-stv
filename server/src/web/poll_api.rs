@@ -255,12 +255,13 @@ fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error as StdError;
 
     use super::*;
-    use warp::{Future, hyper::{Body, body::{self, HttpBody}}};
+    use warp::hyper::body;
 
-    #[test]
-    fn insert() {
+    #[tokio::test]
+    async fn insert() -> Result<(), Box<dyn StdError>> {
         let res = new(voting::CreatePollSettings {
             id: None,
             title: String::from("Let's test this!"),
@@ -271,9 +272,9 @@ mod tests {
             close_after_votes: Some(10),
         });
 
-        let body = Box::new(body::to_bytes(res.into_body()));
-        while body.poll() {
+        let body_bytes = body::to_bytes(res.into_body()).await?;
+        let res_poll: voting::Poll = serde_json::from_reader(body_bytes.as_ref())?;
 
-        }
+        Ok(())
     }
 }
