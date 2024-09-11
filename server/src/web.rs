@@ -8,6 +8,11 @@ use warp::Filter;
 use crate::voting::{CreatePollSettings, UpdatePollSettings};
 
 pub async fn setup() {
+    let list_polls = warp::get()
+        .and(warp::path!("api" / "poll"))
+        .and(warp::path::end())
+        .map(poll_api::list);
+
     let new_poll = warp::post()
         .and(warp::path!("api" / "poll"))
         .and(warp::path::end())
@@ -42,7 +47,7 @@ pub async fn setup() {
 
     // Start the server
     let routes =
-        new_poll.or(get_poll).or(update_poll).or(delete_poll)
+        list_polls.or(new_poll).or(get_poll).or(update_poll).or(delete_poll)
         .or(static_files);
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;
 }

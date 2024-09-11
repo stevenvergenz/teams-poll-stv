@@ -1,6 +1,6 @@
-use chrono::{NaiveDateTime, DateTime, Utc};
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::voting;
@@ -59,7 +59,7 @@ pub struct CreatePollSettings {
 
 impl CreatePollSettings {
     pub fn from(owner_id: &Uuid, voting::CreatePollSettings {
-        id,
+        id: _,
         title,
         options,
         winner_count,
@@ -68,7 +68,7 @@ impl CreatePollSettings {
         close_after_votes,
     }: voting::CreatePollSettings) -> (Self, Vec<String>) {
         let poll_settings = Self {
-            id,
+            id: None, // discard any ID provided as input, force random ID from DB
             title,
             winner_count: winner_count as i32,
             write_ins_allowed,
