@@ -63,6 +63,11 @@ pub fn ballot_poll_mismatch(id: i32, expected: &Uuid, actual: &Uuid) -> Validati
         message: format!("ballot {id} expected poll to be {expected}, got {actual}"),
     }
 }
+pub fn ballot_empty() -> ValidationError {
+    ValidationError {
+        message: format!("ballot is empty"),
+    }
+}
 pub fn ballot_incomplete_selection(id: i32, missing_index: usize) -> ValidationError {
     ValidationError {
         message: format!("ballot {id} preferences have gap at index {missing_index}"),

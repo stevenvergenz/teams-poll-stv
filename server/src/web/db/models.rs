@@ -181,35 +181,46 @@ pub struct Ballot {
     pub created_at: NaiveDateTime,
 }
 
-impl TryInto<voting::Ballot> for Ballot {
-    fn try_into(self, poll: voting::Poll, voter: voting::User, votes: Vec<Vote>) -> Result<voting::Ballot, error::ValidationError> {
-        if self.user_id != voter.id.0 {
-            return Err(BallotValidationError::new_voter_mismatch(self.id, &self.user_id, &voter.id.0));
+impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
+    type Error = error::ValidationError;
+    fn try_into(self) -> Result<voting::Ballot, error::ValidationError> {
+        let (db_ballot, db_votes, voter, poll) = self;
+        if db_ballot.user_id != voter.id {
+            return Err(error::ballot_voter_mismatch(db_ballot.id, &db_ballot.user_id, &voter.id));
         }
-        if self.poll_id != poll.id.0 {
-            return Err(BallotValidationError::new_poll_mismatch(self.id, &self.poll_id, &poll.id.0));
+        if db_ballot.poll_id != poll.id.0 {
+            return Err(error::ballot_poll_mismatch(db_ballot.id, &db_ballot.poll_id, &poll.id.0));
+        }
+        if db_votes.is_empty() {
+            return Err(error::ballot_empty(db_ballot.id));
         }
 
         let mut ranked_prefs = vec![];
-        for i in 0..votes.len() {
-            let ov = votes.iter().find(|v| v.preference == i as i32);
+        for i in 0..db_votes.len() {
+            let ov = db_votes.iter().find(|v| v.preference == i as i32);
             if let Some(v) = ov {
                 let option_id = voting::WeakId(v.option as u32);
                 if !poll.option_ids.contains(&option_id) {
-                    return Err(BallotValidationError::new_invalid_selection(self.id, i, v.option));
+                    return Err(error::ballot_invalid_selection(db_ballot.id, i, v.option));
+                }
+
+                let duplicate_search = ranked_prefs.iter().enumerate()
+                    .find(|(_, o)| **o == option_id);
+                if let Some((old_index, _)) = duplicate_search {
+                    return Err(error::ballot_duplicate_selection(db_ballot.id, v.option, (old_index, v.preference as usize)))
                 }
                 ranked_prefs.push(option_id);
             }
             else {
-                return Err(BallotValidationError::new_incomplete_selection(self.id, i));
+                return Err(error::ballot_incomplete_selection(db_ballot.id, i));
             }
         }
 
         Ok(voting::Ballot {
             poll: Some(poll),
-            voter: Some(voter),
+            voter: Some(voter.into()),
             ranked_preferences: ranked_prefs,
-            created_at: self.created_at.and_utc(),
+            created_at: db_ballot.created_at.and_utc(),
         })
     }
 }

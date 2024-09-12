@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error as StdError;
 
 use diesel::prelude::*;
 use diesel::result::Error as DbError;
@@ -217,7 +216,7 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     }
 }
 
-fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
+pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
     // fetch poll from db
     let possible_poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
         .inner_join(schema::users::table)
@@ -228,8 +227,8 @@ fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll
         .first(connection);
 
     let (db_poll, db_user) = match possible_poll_result {
-        Err(DbError::NotFound) => {
-            return Err(error::db_get(DbError::NotFound, StatusCode::NOT_FOUND, "poll/owner", None));
+        Err(err @ DbError::NotFound) => {
+            return Err(error::db_get(err, StatusCode::NOT_FOUND, "poll/owner", None));
         }
         Err(err) => {
             return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "poll/owner", None));
