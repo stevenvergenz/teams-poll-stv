@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error as StdError;
 
 use diesel::prelude::*;
 use diesel::result::Error as DbError;
@@ -8,6 +9,7 @@ use warp::reply::{self, Reply, Response};
 
 use crate::voting;
 use super::db::{establish_connection, models, schema};
+use crate::error;
 
 pub fn list() -> Response {
     let connection = &mut establish_connection();
@@ -17,7 +19,8 @@ pub fn list() -> Response {
         .limit(100)
         .load(connection);
 
-    let mut polls: HashMap<Uuid, voting::Poll> = match possible_poll_results {
+    let mut polls_lookup: HashMap<Uuid, voting::Poll> = HashMap::new();
+    match possible_poll_results {
         Err(err) => {
             return reply::with_status(
                 format!("Failed to get polls: {err}"),
@@ -25,16 +28,24 @@ pub fn list() -> Response {
             ).into_response();
         },
         Ok(polls) => {
-            polls.into_iter().map(|(poll, user)| {
-                let mut poll = poll.into_voting();
-                poll.owner = Some(user.into_voting());
-                (poll.id.0, poll)
-            }).collect()
+            for (poll, user) in polls.into_iter() {
+                let mut poll: voting::Poll = match poll.try_into() {
+                    Err(err) => {
+                        return reply::with_status(
+                            format!("Failed to resolve poll owners: {err}"),
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        ).into_response();
+                    },
+                    Ok(poll) => poll,
+                };
+                poll.owner = Some(user.into());
+                polls_lookup.insert(poll.id.0, poll);
+            }
         }
-    };
+    }
 
     let possible_option_results: Result<Vec<models::PollOption>, DbError> = schema::polloptions::table
-        .filter(schema::polloptions::poll_id.eq_any(polls.keys()))
+        .filter(schema::polloptions::poll_id.eq_any(polls_lookup.keys()))
         .order(schema::polloptions::id)
         .select(models::PollOption::as_select())
         .load(connection);
@@ -48,8 +59,8 @@ pub fn list() -> Response {
         Ok(options) => options,
     };
     for option in options.into_iter() {
-        if let Some(poll) = polls.get_mut(&option.poll_id) {
-            let option = option.into_voting();
+        if let Some(poll) = polls_lookup.get_mut(&option.poll_id) {
+            let option: voting::PollOption = option.into();
             poll.option_ids.push(option.id);
             match &mut poll.options {
                 None => { poll.options = Some(vec![option]); },
@@ -58,7 +69,7 @@ pub fn list() -> Response {
         }
     }
 
-    reply::json(&polls.values().collect::<Vec<&voting::Poll>>()).into_response()
+    reply::json(&polls_lookup.values().collect::<Vec<&voting::Poll>>()).into_response()
 
 }
 
@@ -131,30 +142,22 @@ pub fn get(id: Uuid) -> Response {
 
     match get_internal(connection, &id) {
         Ok(poll) => reply::json(&poll).into_response(),
-        Err(GetPollError::DbError { err }) => {
-            reply::with_status(
-                format!("Error fetching poll: {err}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response()
+        Err(err @ error::HttpGetError { code, .. }) => {
+            reply::with_status(err.to_string(), code).into_response()
         },
-        Err(GetPollError::IdNotFound) => {
-            reply::with_status(
-                format!("No poll with id {id}"),
-                StatusCode::NOT_FOUND,
-            ).into_response()
-        }
     }
 }
 
 pub fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Response {
-    let db_settings = models::UpdatePollSettings::from(settings);
+    let settings = models::UpdatePollSettings::from(settings);
+
     let connection = &mut establish_connection();
     let update = diesel::update(
         schema::polls::table.filter(
             schema::polls::id.eq(poll_id)
             .and(schema::polls::owner_id.eq(user_id))
         )
-    ).set(db_settings).execute(connection);
+    ).set(settings).execute(connection);
 
     match update {
         Err(DbError::QueryBuilderError(_)) => {
@@ -214,13 +217,7 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     }
 }
 
-#[derive(Debug)]
-enum GetPollError {
-    DbError { err: DbError },
-    IdNotFound,
-}
-
-fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, GetPollError> {
+fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
     // fetch poll from db
     let possible_poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
         .inner_join(schema::users::table)
@@ -230,33 +227,36 @@ fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll
         ))
         .first(connection);
 
-    let (poll, user) = match possible_poll_result {
+    let (db_poll, db_user) = match possible_poll_result {
         Err(DbError::NotFound) => {
-            return Err(GetPollError::IdNotFound);
+            return Err(error::db_get(DbError::NotFound, StatusCode::NOT_FOUND, "poll/owner", None));
         }
         Err(err) => {
-            return Err(GetPollError::DbError { err });
+            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "poll/owner", None));
         },
         Ok(r) => r,
     };
 
-    let possible_options_result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&poll)
+    let possible_options_result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&db_poll)
         .select(models::PollOption::as_select())
         .load(connection);
 
     let db_options = match possible_options_result {
         Err(err) => {
-            return Err(GetPollError::DbError{ err });
+            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "option", Some("poll")));
         },
         Ok(o) => o,
     };
 
-    let mut poll = poll.into_voting();
-    poll.owner = Some(user.into_voting());
+    let mut poll: voting::Poll = match db_poll.try_into() {
+        Err(err) => return Err(error::HttpGetError::from(err)),
+        Ok(p) => p,
+    };
+    poll.owner = Some(db_user.into());
 
     let mut options = vec![];
-    for option in db_options.into_iter() {
-        let option = option.into_voting();
+    for db_option in db_options.into_iter() {
+        let option: voting::PollOption = db_option.into();
         poll.option_ids.push(option.id);
         options.push(option);
     }
@@ -272,18 +272,8 @@ mod tests {
     use super::*;
     use warp::hyper::body;
 
-    async fn setup(
-        props: &voting::UpdatePollSettings, options: &Vec<String>,
-    ) -> Result<voting::Poll, Box<dyn StdError>> {
-        let mut req: voting::CreatePollSettings = serde_json::from_str(r#"
-        {
-            "title": "",
-            "options": []
-        }
-        "#)?;
-        req.apply(props, options);
-
-        let res = new(Uuid::nil(), req);
+    async fn setup(settings: &voting::CreatePollSettings) -> Result<voting::Poll, Box<dyn StdError>> {
+        let res = new(Uuid::nil(), voting::CreatePollSettings::from(settings.clone()));
         let res_bytes = body::to_bytes(res.into_body()).await?;
         let res_poll: voting::Poll = serde_json::from_reader(res_bytes.as_ref())?;
 
@@ -298,21 +288,20 @@ mod tests {
 
     #[tokio::test]
     async fn create_delete() -> Result<(), Box<dyn StdError>> {
-        let req = voting::UpdatePollSettings {
-            title: Some(String::from("Basic crud test")),
-            ..voting::UpdatePollSettings::new()
+        let req = voting::CreatePollSettings {
+            title: String::from("Basic crud test"),
+            ..voting::CreatePollSettings::default()
         };
-        let req_options = vec![String::from("A"), String::from("B"), String::from("C")];
-        let poll = setup(&req, &req_options).await?;
+        let poll = setup(&req).await?;
 
-        assert_eq!(req.title.unwrap(), poll.title);
-        assert_eq!(req_options.len(), poll.option_ids.len());
+        assert_eq!(req.title, poll.title);
+        assert_eq!(req.options.len(), poll.option_ids.len());
         assert!(poll.options.is_some());
 
         for (i, option) in poll.options.as_ref().unwrap().iter().enumerate() {
             assert_eq!(poll.option_ids[i].0, i as u32);
             assert_eq!(option.id.0, i as u32);
-            assert_eq!(option.description, req_options[i]);
+            assert_eq!(option.description, req.options[i]);
         }
 
         teardown(poll).await?;

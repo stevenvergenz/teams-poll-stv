@@ -71,10 +71,10 @@ impl PollResult {
         let vecs = poll.option_ids.iter().map(|_| vec![]);
         let mut tally = poll.option_ids.iter().zip(vecs).collect::<HashMap<&WeakId, Vec<&Ballot>>>();
 
-        // calculate the overall popularity of each option
+        // calculate the overall popularity of each option (1 first pref ~== 2 second prefs ~== 4 third prefs)
         let mut popularity: HashMap<&WeakId, f64> = HashMap::new();
         for ballot in ballots.iter() {
-            for (pref, option) in ballot.selection_ids.iter().enumerate() {
+            for (pref, option) in ballot.ranked_preferences.iter().enumerate() {
                 popularity.insert(
                     option,
                     popularity.get(option).unwrap_or(&0f64) + (1f64 / (pref as f64 + 1f64)));
@@ -85,7 +85,7 @@ impl PollResult {
             // count the votes for each option
             while let Some(ballot) = ballots.pop() {
                 // find the vote from this ballot
-                let selection = ballot.selection_ids.iter()
+                let selection = ballot.ranked_preferences.iter()
                     .find(|id| !result.eliminated.contains(id) && !result.winners.contains(id));
                 println!("User {:?} votes for {selection:?}", ballot.voter);
 
@@ -200,8 +200,8 @@ mod tests {
         assert_eq!(poll.options.unwrap().len(), 4, "Check option count");
         assert_eq!(users.len(), 2, "Check user count");
         assert_eq!(ballots.len(), 2, "Check ballot count");
-        assert_eq!(ballots[0].selection_ids, vec![3, 2, 1], "Check ballot 1");
-        assert_eq!(ballots[1].selection_ids, vec![2, 3], "Check ballot 2");
+        assert_eq!(ballots[0].ranked_preferences, vec![3, 2, 1], "Check ballot 1");
+        assert_eq!(ballots[1].ranked_preferences, vec![2, 3], "Check ballot 2");
     }
 
     #[test]

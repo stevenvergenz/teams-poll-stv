@@ -4,8 +4,8 @@ mod poll;
 mod poll_result;
 mod user;
 
-pub use ballot::Ballot;
-pub use id::{Id, WeakId};
-pub use poll::{CreatePollSettings, UpdatePollSettings, Poll, PollOption};
-pub use poll_result::PollResult;
-pub use user::User;
+pub use ballot::*;
+pub use id::*;
+pub use poll::*;
+pub use poll_result::*;
+pub use user::*;

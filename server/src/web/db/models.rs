@@ -1,9 +1,12 @@
-use chrono::{NaiveDate, NaiveDateTime};
+use std::convert::TryInto;
+
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::voting;
+use crate::error;
 use super::schema;
 
 #[derive(Associations, Identifiable, Queryable, Selectable, Serialize)]
@@ -24,22 +27,37 @@ pub struct Poll {
     pub closed_at: Option<NaiveDateTime>,
 }
 
-impl Poll {
-    pub fn into_voting(self) -> voting::Poll {
-        voting::Poll {
-            id: voting::Id(self.id),
-            title: self.title,
-            option_ids: vec![],
-            options: None,
-            winner_count: self.winner_count as u8,
-            write_ins_allowed: self.write_ins_allowed,
-            close_after_time: self.close_after_time.map(|t| t.and_utc()),
-            close_after_votes: self.close_after_votes.map(|v| v as u32),
-            owner_id: voting::Id(self.owner_id),
-            owner: None,
-            created_at: self.created_at.and_utc(),
-            closed_at: self.closed_at.map(|t| t.and_utc()),
-        }
+impl TryInto<voting::Poll> for Poll {
+    type Error = error::ValidationError;
+    fn try_into(self) -> Result<voting::Poll, Self::Error> {
+        let Self {
+            id,
+            title,
+            winner_count,
+            write_ins_allowed,
+            close_after_time,
+            close_after_votes,
+            owner_id,
+            created_at,
+            closed_at,
+        } = self;
+
+        // re-validate timeless settings
+        let settings = voting::UnvalidatedCreatePollSettings {
+            title, winner_count, write_ins_allowed, close_after_votes,
+            ..voting::UnvalidatedCreatePollSettings::from(voting::CreatePollSettings::default())
+        };
+        let settings = voting::CreatePollSettings::try_from(settings)?;
+
+        // straight-up copy unvalidated, generated, or timely elements
+        let mut poll = voting::Poll::from(settings);
+        poll.id = voting::Id(id);
+        poll.close_after_time = close_after_time.map(|t| t.and_utc());
+        poll.owner_id = voting::Id(owner_id);
+        poll.created_at = created_at.and_utc();
+        poll.closed_at = closed_at.map(|t| t.and_utc());
+
+        Ok(poll)
     }
 }
 
@@ -91,8 +109,8 @@ pub struct UpdatePollSettings {
     pub close_after_votes: Option<Option<i32>>,
 }
 
-impl UpdatePollSettings {
-    pub fn from(voting::UpdatePollSettings {
+impl From<voting::UpdatePollSettings> for UpdatePollSettings {
+    fn from(voting::UpdatePollSettings {
         title,
         winner_count,
         write_ins_allowed,
@@ -125,8 +143,8 @@ pub struct PollOption {
     pub description: String,
 }
 
-impl PollOption {
-    pub fn into_voting(self) -> voting::PollOption {
+impl Into<voting::PollOption> for PollOption {
+    fn into(self) -> voting::PollOption {
         voting::PollOption {
             id: voting::WeakId(self.id as u32),
             description: self.description,
@@ -142,8 +160,8 @@ pub struct User {
     pub display_name: String,
 }
 
-impl User {
-    pub fn into_voting(self) -> voting::User {
+impl Into<voting::User> for User {
+    fn into(self) -> voting::User {
         voting::User {
             id: voting::Id(self.id),
             display_name: self.display_name,
@@ -163,9 +181,36 @@ pub struct Ballot {
     pub created_at: NaiveDateTime,
 }
 
-impl Ballot {
-    pub fn into_voting(self, votes: Vec<Vote>) -> voting::Ballot {
-        todo!()
+impl TryInto<voting::Ballot> for Ballot {
+    fn try_into(self, poll: voting::Poll, voter: voting::User, votes: Vec<Vote>) -> Result<voting::Ballot, error::ValidationError> {
+        if self.user_id != voter.id.0 {
+            return Err(BallotValidationError::new_voter_mismatch(self.id, &self.user_id, &voter.id.0));
+        }
+        if self.poll_id != poll.id.0 {
+            return Err(BallotValidationError::new_poll_mismatch(self.id, &self.poll_id, &poll.id.0));
+        }
+
+        let mut ranked_prefs = vec![];
+        for i in 0..votes.len() {
+            let ov = votes.iter().find(|v| v.preference == i as i32);
+            if let Some(v) = ov {
+                let option_id = voting::WeakId(v.option as u32);
+                if !poll.option_ids.contains(&option_id) {
+                    return Err(BallotValidationError::new_invalid_selection(self.id, i, v.option));
+                }
+                ranked_prefs.push(option_id);
+            }
+            else {
+                return Err(BallotValidationError::new_incomplete_selection(self.id, i));
+            }
+        }
+
+        Ok(voting::Ballot {
+            poll: Some(poll),
+            voter: Some(voter),
+            ranked_preferences: ranked_prefs,
+            created_at: self.created_at.and_utc(),
+        })
     }
 }
 

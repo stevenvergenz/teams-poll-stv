@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Id(pub Uuid);
 impl Id {
     pub const fn nil() -> Id {
@@ -23,6 +24,7 @@ impl Display for Id {
 
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct WeakId(pub u32);
 impl WeakId {
     pub const fn nil() -> WeakId {
