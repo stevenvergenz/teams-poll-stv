@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use diesel::prelude::*;
 use diesel::result::Error as DbError;
 use uuid::Uuid;
@@ -9,68 +7,6 @@ use warp::reply::{self, Reply, Response};
 use crate::voting;
 use super::db::{establish_connection, models, schema};
 use crate::error;
-
-pub fn list() -> Response {
-    let connection = &mut establish_connection();
-    let possible_poll_results: Result<Vec<(models::Poll, models::User)>, DbError> = schema::polls::table
-        .inner_join(schema::users::table)
-        .select((models::Poll::as_select(), models::User::as_select()))
-        .limit(100)
-        .load(connection);
-
-    let mut polls_lookup: HashMap<Uuid, voting::Poll> = HashMap::new();
-    match possible_poll_results {
-        Err(err) => {
-            return reply::with_status(
-                format!("Failed to get polls: {err}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response();
-        },
-        Ok(polls) => {
-            for (poll, user) in polls.into_iter() {
-                let mut poll: voting::Poll = match poll.try_into() {
-                    Err(err) => {
-                        return reply::with_status(
-                            format!("Failed to resolve poll owners: {err}"),
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                        ).into_response();
-                    },
-                    Ok(poll) => poll,
-                };
-                poll.owner = Some(user.into());
-                polls_lookup.insert(poll.id.0, poll);
-            }
-        }
-    }
-
-    let possible_option_results: Result<Vec<models::PollOption>, DbError> = schema::polloptions::table
-        .filter(schema::polloptions::poll_id.eq_any(polls_lookup.keys()))
-        .order(schema::polloptions::id)
-        .select(models::PollOption::as_select())
-        .load(connection);
-    let options = match possible_option_results {
-        Err(err) => {
-            return reply::with_status(
-                format!("Failed to get options: {err}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response();
-        },
-        Ok(options) => options,
-    };
-    for option in options.into_iter() {
-        if let Some(poll) = polls_lookup.get_mut(&option.poll_id) {
-            let option: voting::PollOption = option.into();
-            poll.option_ids.push(option.id);
-            match &mut poll.options {
-                None => { poll.options = Some(vec![option]); },
-                Some(vec) => { vec.push(option); },
-            }
-        }
-    }
-
-    reply::json(&polls_lookup.values().collect::<Vec<&voting::Poll>>()).into_response()
-
-}
 
 pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
     let connection = &mut establish_connection();
@@ -138,12 +74,9 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
 
 pub fn get(id: Uuid) -> Response {
     let connection = &mut establish_connection();
-
     match get_internal(connection, &id) {
         Ok(poll) => reply::json(&poll).into_response(),
-        Err(err @ error::HttpGetError { code, .. }) => {
-            reply::with_status(err.to_string(), code).into_response()
-        },
+        Err(err) => err.into_response(),
     }
 }
 
@@ -218,7 +151,7 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
 
 pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
     // fetch poll from db
-    let possible_poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
+    let poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
         .inner_join(schema::users::table)
         .select((
             models::Poll::as_select(),
@@ -226,7 +159,7 @@ pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::
         ))
         .first(connection);
 
-    let (db_poll, db_user) = match possible_poll_result {
+    let (db_poll, db_user) = match poll_result {
         Err(err @ DbError::NotFound) => {
             return Err(error::db_get(err, StatusCode::NOT_FOUND, "poll/owner", None));
         }
@@ -236,30 +169,21 @@ pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::
         Ok(r) => r,
     };
 
-    let possible_options_result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&db_poll)
+    let options_result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&db_poll)
         .select(models::PollOption::as_select())
         .load(connection);
 
-    let db_options = match possible_options_result {
+    let db_options = match options_result {
         Err(err) => {
             return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "option", Some("poll")));
         },
         Ok(o) => o,
     };
 
-    let mut poll: voting::Poll = match db_poll.try_into() {
+    let poll: voting::Poll = match (db_poll, db_options, db_user).try_into() {
         Err(err) => return Err(error::HttpGetError::from(err)),
         Ok(p) => p,
     };
-    poll.owner = Some(db_user.into());
-
-    let mut options = vec![];
-    for db_option in db_options.into_iter() {
-        let option: voting::PollOption = db_option.into();
-        poll.option_ids.push(option.id);
-        options.push(option);
-    }
-    poll.options = Some(options);
 
     Ok(poll)
 }

@@ -27,33 +27,41 @@ pub struct Poll {
     pub closed_at: Option<NaiveDateTime>,
 }
 
-impl TryInto<voting::Poll> for Poll {
+impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
     type Error = error::ValidationError;
     fn try_into(self) -> Result<voting::Poll, Self::Error> {
-        let Self {
+        let (Poll {
             id,
             title,
             winner_count,
             write_ins_allowed,
             close_after_time,
             close_after_votes,
-            owner_id,
+            owner_id: _,
             created_at,
             closed_at,
-        } = self;
+        }, options, owner) = self;
 
         // re-validate timeless settings
         let settings = voting::UnvalidatedCreatePollSettings {
             title, winner_count, write_ins_allowed, close_after_votes,
             ..voting::UnvalidatedCreatePollSettings::from(voting::CreatePollSettings::default())
         };
-        let settings = voting::CreatePollSettings::try_from(settings)?;
+        let mut settings = match voting::CreatePollSettings::try_from(settings) {
+            Err(err) => {
+                return Err(err.with_context("poll", error::ContextId::Uuid(id)))
+            },
+            Ok(p) => p,
+        };
+        settings.id = Some(id);
 
         // straight-up copy unvalidated, generated, or timely elements
-        let mut poll = voting::Poll::from(settings);
-        poll.id = voting::Id(id);
+        let mut poll = voting::Poll::new(
+            settings,
+            options.into_iter().map(|o| o.into()).collect(),
+            owner.into(),
+        );
         poll.close_after_time = close_after_time.map(|t| t.and_utc());
-        poll.owner_id = voting::Id(owner_id);
         poll.created_at = created_at.and_utc();
         poll.closed_at = closed_at.map(|t| t.and_utc());
 
@@ -169,7 +177,7 @@ impl Into<voting::User> for User {
     }
 }
 
-#[derive(Associations, Queryable, Selectable, Identifiable, Insertable)]
+#[derive(Associations, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = schema::ballots)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[diesel(belongs_to(User, foreign_key = user_id))]
@@ -184,44 +192,42 @@ pub struct Ballot {
 impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
     type Error = error::ValidationError;
     fn try_into(self) -> Result<voting::Ballot, error::ValidationError> {
-        let (db_ballot, db_votes, voter, poll) = self;
-        if db_ballot.user_id != voter.id {
-            return Err(error::ballot_voter_mismatch(db_ballot.id, &db_ballot.user_id, &voter.id));
-        }
-        if db_ballot.poll_id != poll.id.0 {
-            return Err(error::ballot_poll_mismatch(db_ballot.id, &db_ballot.poll_id, &poll.id.0));
-        }
-        if db_votes.is_empty() {
-            return Err(error::ballot_empty(db_ballot.id));
-        }
+        let (db_ballot, db_votes, db_voter, poll) = self;
 
-        let mut ranked_prefs = vec![];
+        let mut ballot = voting::UnvalidatedCreateBallot::new();
         for i in 0..db_votes.len() {
             let ov = db_votes.iter().find(|v| v.preference == i as i32);
             if let Some(v) = ov {
-                let option_id = voting::WeakId(v.option as u32);
-                if !poll.option_ids.contains(&option_id) {
-                    return Err(error::ballot_invalid_selection(db_ballot.id, i, v.option));
-                }
-
-                let duplicate_search = ranked_prefs.iter().enumerate()
-                    .find(|(_, o)| **o == option_id);
-                if let Some((old_index, _)) = duplicate_search {
-                    return Err(error::ballot_duplicate_selection(db_ballot.id, v.option, (old_index, v.preference as usize)))
-                }
-                ranked_prefs.push(option_id);
+                ballot.ranked_preferences.push(voting::WeakId(v.option as u32));
             }
             else {
-                return Err(error::ballot_incomplete_selection(db_ballot.id, i));
+                return Err(error::ballot_incomplete_selection(i)
+                    .with_context("ballot", error::ContextId::I32(db_ballot.id)));
             }
         }
 
-        Ok(voting::Ballot {
-            poll: Some(poll),
-            voter: Some(voter.into()),
-            ranked_preferences: ranked_prefs,
-            created_at: db_ballot.created_at.and_utc(),
-        })
+        let ballot = match voting::CreateBallot::try_from((ballot, poll)) {
+            Err(err) => {
+                return Err(err.with_context("ballot", error::ContextId::I32(db_ballot.id)))
+            },
+            Ok(b) => b,
+        };
+
+        Ok(voting::Ballot::new(db_voter.into(), ballot))
+    }
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = schema::ballots)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct CreateBallot {
+    poll_id: Uuid,
+    user_id: Uuid,
+}
+
+impl CreateBallot {
+    pub fn new(poll_id: Uuid, user_id: Uuid) -> Self {
+        Self { poll_id, user_id }
     }
 }
 
@@ -231,6 +237,6 @@ impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
 #[diesel(belongs_to(Ballot, foreign_key = ballot_id))]
 pub struct Vote {
     pub ballot_id: i32,
-    pub option: i32,
     pub preference: i32,
+    pub option: i32,
 }

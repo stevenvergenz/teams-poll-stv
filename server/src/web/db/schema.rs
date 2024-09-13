@@ -42,10 +42,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    votes (ballot_id, option, preference) {
+    votes (ballot_id, preference) {
         ballot_id -> Int4,
-        option -> Int4,
         preference -> Int4,
+        option -> Int4,
     }
 }
 

@@ -154,7 +154,7 @@ mod tests {
     ];
 
     /// Generate a poll, options, voters, and ballots from a list of vote preferences
-    fn generate_poll(winner_count: u8, mut vote_prefs: Vec<Vec<u32>>) -> (Poll, Vec<User>, Vec<Ballot>) {
+    fn generate_poll(winner_count: u8, mut vote_prefs: Vec<Vec<u32>>) -> (Poll, Vec<Ballot>) {
         let voter_count = vote_prefs.len();
         let mut option_count = 0;
         for ballot in &vote_prefs {
@@ -163,13 +163,13 @@ mod tests {
             }
         }
 
-        let users: Vec<User> = (0..voter_count)
+        let mut users: Vec<User> = (0..voter_count)
             .map(|i| User::new(Id::new(), format!("Voter {i}")))
             .collect();
         let options: Vec<String> = (0..=option_count)
             .map(|i| format!("Option {i}"))
             .collect();
-        let poll = Poll::new(users[0].clone(), CreatePollSettings {
+        let poll = Poll::from(CreatePollSettings {
             id: None,
             title: String::from("Test Poll"),
             options,
@@ -178,27 +178,33 @@ mod tests {
             close_after_time: None,
             close_after_votes: None,
         });
+
         let mut ballots = vec![];
 
         while let Some(prefs) = vote_prefs.pop() {
-            let ballot = Ballot::new(prefs.iter().map(|i| WeakId(*i)).collect());
+            let ballot = Ballot::new(
+                users.pop().unwrap(),
+                CreateBallot {
+                    ranked_preferences: prefs.iter().map(|i| WeakId(*i)).collect(),
+                    ..CreateBallot::default()
+                },
+            );
             ballots.push(ballot);
         }
         ballots.reverse();
 
-        (poll, users, ballots)
+        (poll, ballots)
     }
 
     #[test]
     fn validate_poll_generator() {
-        let (poll, users, ballots) = generate_poll(1, vec![
+        let (poll, ballots) = generate_poll(1, vec![
             vec![3, 2, 1],
             vec![2, 3],
         ]);
 
         assert_eq!(poll.option_ids, vec![0, 1, 2, 3], "Check option ids");
         assert_eq!(poll.options.unwrap().len(), 4, "Check option count");
-        assert_eq!(users.len(), 2, "Check user count");
         assert_eq!(ballots.len(), 2, "Check ballot count");
         assert_eq!(ballots[0].ranked_preferences, vec![3, 2, 1], "Check ballot 1");
         assert_eq!(ballots[1].ranked_preferences, vec![2, 3], "Check ballot 2");
@@ -206,8 +212,7 @@ mod tests {
 
     #[test]
     fn empty_poll_halts() {
-        let owner = User::new(Id::new(), String::from("Temp"));
-        let poll = Poll::new(owner, CreatePollSettings {
+        let poll = Poll::from(CreatePollSettings {
             id: None,
             title: String::from("Empty Poll"),
             options: vec![],
@@ -225,7 +230,7 @@ mod tests {
 
     #[test]
     fn simple_majority() {
-        let (poll, _, ballots) = generate_poll(1, vec![
+        let (poll, ballots) = generate_poll(1, vec![
             vec![2],
             vec![1],
             vec![1],
@@ -239,7 +244,7 @@ mod tests {
 
     #[test]
     fn simple_two_rounds() {
-        let (poll, _, ballots) = generate_poll(1, vec![
+        let (poll, ballots) = generate_poll(1, vec![
             // 5 votes, 1 seat = 3 votes to win
             vec![0],
             vec![0],
@@ -256,7 +261,7 @@ mod tests {
 
     #[test]
     fn tied_elim() {
-        let (poll, _, ballots) = generate_poll(1, vec![
+        let (poll, ballots) = generate_poll(1, vec![
             vec![0],
             vec![0, 1],
             vec![1, 0],
@@ -271,7 +276,7 @@ mod tests {
 
     #[test]
     fn two_winners_simple() {
-        let (poll, _, ballots) = generate_poll(2, vec![
+        let (poll, ballots) = generate_poll(2, vec![
             vec![0],
             vec![1],
         ]);
@@ -284,7 +289,7 @@ mod tests {
 
     #[test]
     fn two_winners_two_rounds() {
-        let (poll, _, ballots) = generate_poll(2, vec![
+        let (poll, ballots) = generate_poll(2, vec![
             // 6 votes, 2 seats = 3 votes to win
             vec![0],
             vec![0],

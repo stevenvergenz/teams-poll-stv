@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS Ballots (
 
 CREATE TABLE IF NOT EXISTS Votes (
     ballot_id INTEGER NOT NULL REFERENCES Ballots (id) ON DELETE CASCADE,
-    option INTEGER NOT NULL,
     preference INTEGER NOT NULL,
-    PRIMARY KEY (ballot_id, option, preference)
+    option INTEGER NOT NULL,
+    PRIMARY KEY (ballot_id, preference)
 );

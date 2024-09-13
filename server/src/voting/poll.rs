@@ -11,7 +11,7 @@ use super::id::{Id, WeakId};
 use super::user::User;
 use crate::error;
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Poll {
     pub id: Id,
     pub title: String,
@@ -30,8 +30,10 @@ pub struct Poll {
 }
 
 impl Poll {
-    pub fn new(owner: User, settings: CreatePollSettings) -> Self {
+    pub fn new(settings: CreatePollSettings, options: Vec<PollOption>, owner: User, ) -> Self {
         let mut poll = Self::from(settings);
+        poll.option_ids = options.iter().map(|o| o.id).collect();
+        poll.options = Some(options);
         poll.owner_id = owner.id.clone();
         poll.owner = Some(owner);
         poll
@@ -48,14 +50,21 @@ impl From<CreatePollSettings> for Poll {
         close_after_time,
         close_after_votes: close_after_num_votes
     }: CreatePollSettings) -> Poll {
-        let mut poll = Poll {
+        let options: Vec<PollOption> = options.into_iter().enumerate().map(|(i, text)| {
+            PollOption {
+                id: WeakId(i as u32),
+                description: text,
+            }
+        }).collect();
+
+        Poll {
             id: match id {
                 Some(uuid) => Id(uuid),
                 None => Id::new(),
             },
             title,
-            option_ids: (0..(options.len() as u32)).map(|i| WeakId(i)).collect(),
-            options: None,
+            option_ids: options.iter().map(|o| o.id).collect(),
+            options: Some(options),
             winner_count,
             write_ins_allowed,
             close_after_time,
@@ -65,24 +74,12 @@ impl From<CreatePollSettings> for Poll {
             owner: None,
             created_at: Utc::now(),
             closed_at: None,
-        };
-
-        let mut full_options: Vec<PollOption> = vec![];
-        for (opt_id, text) in poll.option_ids.iter().zip(options.into_iter()) {
-            full_options.push(PollOption {
-                id: opt_id.clone(),
-                description: text,
-            });
         }
-
-        poll.options = Some(full_options);
-
-        poll
     }
 }
 
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PollOption {
     pub id: WeakId,
     pub description: String,

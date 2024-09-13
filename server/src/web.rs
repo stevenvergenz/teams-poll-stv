@@ -6,15 +6,10 @@ use std::env;
 use uuid::Uuid;
 use warp::Filter;
 
-use crate::voting::{Ballot, CreatePollSettings, UpdatePollSettings};
+use crate::voting::{UnvalidatedCreateBallot, CreatePollSettings, UpdatePollSettings};
 
 pub async fn setup() {
     // define the poll API
-
-    let list_polls = warp::get()
-        .and(warp::path!("api" / "poll"))
-        .and(warp::path::end())
-        .map(poll_api::list);
 
     let new_poll = warp::post()
         .and(warp::path!("api" / "poll"))
@@ -47,7 +42,7 @@ pub async fn setup() {
         .and(warp::path!("api" / "poll" / Uuid / "my_ballot"))
         .and(warp::path::end())
         .and(warp::header::<Uuid>("user-id"))
-        .and(warp::body::json::<Ballot>())
+        .and(warp::body::json::<UnvalidatedCreateBallot>())
         .map(ballot_api::new);
 
     let get_ballot = warp::get()
@@ -60,7 +55,7 @@ pub async fn setup() {
         .and(warp::path!("api" / "poll" / Uuid / "my_ballot"))
         .and(warp::path::end())
         .and(warp::header::<Uuid>("user-id"))
-        .and(warp::body::json::<Ballot>())
+        .and(warp::body::json::<UnvalidatedCreateBallot>())
         .map(ballot_api::update);
 
     let delete_ballot = warp::delete()
@@ -81,7 +76,7 @@ pub async fn setup() {
 
     // Start the server
     let routes =
-        list_polls.or(new_poll).or(get_poll).or(update_poll).or(delete_poll)
+        new_poll.or(get_poll).or(update_poll).or(delete_poll)
         .or(new_ballot).or(get_ballot).or(update_ballot).or(delete_ballot)
         .or(static_files);
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;

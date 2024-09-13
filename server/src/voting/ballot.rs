@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 use std::default::Default;
-use std::convert::{From, Into, TryInto};
+use std::convert::{From, Into};
 
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
@@ -10,7 +10,7 @@ use super::poll::Poll;
 use super::user::{User, PossibleUser};
 use crate::error;
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct Ballot {
     pub poll: Option<Poll>,
@@ -20,9 +20,9 @@ pub struct Ballot {
 }
 
 impl Ballot {
-    pub fn new(poll: Poll, voter: User, CreateBallot { ranked_preferences }: CreateBallot) -> Ballot {
+    pub fn new(voter: User, CreateBallot { poll, ranked_preferences }: CreateBallot) -> Ballot {
         Ballot {
-            poll: Some(poll),
+            poll,
             voter: Some(voter),
             ranked_preferences,
             created_at: Utc::now(),
@@ -36,39 +36,75 @@ impl Display for Ballot {
     }
 }
 
+impl Default for Ballot {
+    fn default() -> Self {
+        Ballot {
+            voter: None,
+            created_at: Utc::now(),
+            ..CreateBallot::default().into()
+        }
+    }
+}
 
+impl From<CreateBallot> for Ballot {
+    fn from(CreateBallot { poll, ranked_preferences }: CreateBallot) -> Self {
+        Self {
+            poll,
+            ranked_preferences,
+            ..Ballot::default()
+        }
+    }
+}
 
 
 pub struct CreateBallot {
+    pub poll: Option<Poll>,
     pub ranked_preferences: Vec<WeakId>,
 }
 
-pub struct UnvalidatedCreateBallot {
-    pub ranked_preferences: Vec<WeakId>,
+impl Default for CreateBallot {
+    fn default() -> Self {
+        Self {
+            poll: None,
+            ranked_preferences: vec![WeakId(0)],
+        }
+    }
 }
 
-impl TryInto<CreateBallot> for (UnvalidatedCreateBallot, &Poll) {
+impl TryFrom<(UnvalidatedCreateBallot, Poll)> for CreateBallot {
     type Error = error::ValidationError;
-    fn try_into(self) -> Result<CreateBallot, Self::Error> {
-        let (UnvalidatedCreateBallot { ranked_preferences }, poll) = self;
-
+    fn try_from(
+        (UnvalidatedCreateBallot { ranked_preferences }, poll): (UnvalidatedCreateBallot, Poll),
+    ) -> Result<CreateBallot, Self::Error> {
         if ranked_preferences.is_empty() {
             return Err(error::ballot_empty());
         }
 
-        // todo: rewrite validation here, update model parsing to use this method
-
-        for pref in ranked_preferences {
-            if !poll.option_ids.contains(pref) {
-                return Err(error::ballot_invalid_selection(id, preference_index, option_id))
+        for (i, pref) in ranked_preferences.iter().enumerate() {
+            if !poll.option_ids.contains(&pref) {
+                return Err(error::ballot_invalid_selection(i, pref.0));
+            }
+            if let Some((old_idx, _)) = ranked_preferences[0..i].iter().enumerate().find(|(_, p)| *p == pref) {
+                return Err(error::ballot_duplicate_selection(pref.0, (old_idx, i)))
             }
         }
 
-        Ok(voting::Ballot {
+        Ok(CreateBallot {
             poll: Some(poll),
-            voter: Some(voter.into()),
-            ranked_preferences: ranked_prefs,
-            created_at: db_ballot.created_at.and_utc(),
+            ranked_preferences,
         })
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UnvalidatedCreateBallot {
+    pub ranked_preferences: Vec<WeakId>,
+}
+
+impl UnvalidatedCreateBallot {
+    pub fn new() -> Self {
+        Self {
+            ranked_preferences: vec![],
+        }
     }
 }
