@@ -210,7 +210,7 @@ impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
             }
         }
 
-        let ballot = match voting::CreateBallot::try_from((ballot, poll)) {
+        let ballot = match ballot.validate(poll) {
             Err(err) => {
                 return Err(err.with_context("ballot", error::ContextId::I32(db_ballot.id)))
             },

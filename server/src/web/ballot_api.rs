@@ -36,7 +36,7 @@ pub fn new(poll_id: Uuid, user_id: Uuid, ballot: voting::UnvalidatedCreateBallot
     };
 
     // validate ballot against poll
-    let ballot = match voting::CreateBallot::try_from((ballot, poll)) {
+    let ballot = match ballot.validate(poll) {
         Err(err) => {
             return reply::with_status(err.to_string(), StatusCode::BAD_REQUEST).into_response();
         },
@@ -101,7 +101,7 @@ pub fn update(poll_id: Uuid, user_id: Uuid, new_ballot: voting::UnvalidatedCreat
     };
 
     // confirm success
-    let new_ballot = match voting::CreateBallot::try_from((new_ballot, poll)) {
+    let new_ballot = match new_ballot.validate(poll) {
         Err(err) => {
             return reply::with_status(err.to_string(), StatusCode::BAD_REQUEST).into_response();
         },

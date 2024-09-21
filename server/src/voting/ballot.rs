@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 use std::default::Default;
-use std::convert::{From, Into};
+use std::convert::From;
 
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
@@ -39,9 +39,10 @@ impl Display for Ballot {
 impl Default for Ballot {
     fn default() -> Self {
         Ballot {
+            poll: None,
             voter: None,
+            ranked_preferences: vec![],
             created_at: Utc::now(),
-            ..CreateBallot::default().into()
         }
     }
 }
@@ -71,11 +72,20 @@ impl Default for CreateBallot {
     }
 }
 
-impl TryFrom<(UnvalidatedCreateBallot, Poll)> for CreateBallot {
-    type Error = error::ValidationError;
-    fn try_from(
-        (UnvalidatedCreateBallot { ranked_preferences }, poll): (UnvalidatedCreateBallot, Poll),
-    ) -> Result<CreateBallot, Self::Error> {
+#[derive(Deserialize)]
+pub struct UnvalidatedCreateBallot {
+    pub ranked_preferences: Vec<WeakId>,
+}
+
+impl UnvalidatedCreateBallot {
+    pub fn new() -> Self {
+        Self {
+            ranked_preferences: vec![],
+        }
+    }
+
+    pub fn validate(self, poll: Poll) -> Result<CreateBallot, error::ValidationError> {
+        let Self { ranked_preferences, .. } = self;
         if ranked_preferences.is_empty() {
             return Err(error::ballot_empty());
         }
@@ -93,18 +103,5 @@ impl TryFrom<(UnvalidatedCreateBallot, Poll)> for CreateBallot {
             poll: Some(poll),
             ranked_preferences,
         })
-    }
-}
-
-#[derive(Deserialize)]
-pub struct UnvalidatedCreateBallot {
-    pub ranked_preferences: Vec<WeakId>,
-}
-
-impl UnvalidatedCreateBallot {
-    pub fn new() -> Self {
-        Self {
-            ranked_preferences: vec![],
-        }
     }
 }

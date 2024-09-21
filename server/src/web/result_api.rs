@@ -31,7 +31,6 @@ pub fn get_result(poll_id: Uuid) -> Response {
         },
         Ok(v) => v,
     };
-    println!("Found {} votes", votes.len());
 
     if votes.len() < 3 {
         return reply::with_status("Not yet enough votes to tally", StatusCode::NO_CONTENT).into_response();
@@ -43,7 +42,6 @@ pub fn get_result(poll_id: Uuid) -> Response {
         voting::Ballot { ranked_preferences: vec![], ..Default::default() },
     );
     for vote in votes {
-        println!("Tally me banana!");
         if vote.ballot_id != ballot.0 {
             ballots.push(ballot.1);
             ballot = (
@@ -55,7 +53,6 @@ pub fn get_result(poll_id: Uuid) -> Response {
         ballot.1.ranked_preferences.push(voting::WeakId(vote.option as u32));
     }
     ballots.push(ballot.1);
-    println!("Collated to {} ballots", ballots.len());
 
     let result = voting::PollResult::evaluate(
         &poll,
