@@ -30,6 +30,7 @@ diesel::table! {
         owner_id -> Uuid,
         created_at -> Timestamp,
         closed_at -> Nullable<Timestamp>,
+        rng_seed -> Bytea,
     }
 }
 

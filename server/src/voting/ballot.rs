@@ -66,7 +66,7 @@ impl Default for CreateBallot {
     fn default() -> Self {
         Self {
             poll: None,
-            ranked_preferences: vec![WeakId(0)],
+            ranked_preferences: vec![],
         }
     }
 }

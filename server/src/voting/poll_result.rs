@@ -13,19 +13,57 @@ use super::poll::Poll;
 struct Tally<'a>(&'a HashMap<&'a WeakId, Vec<&'a Ballot>>);
 impl<'a> Display for Tally<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let mut sorted_tally: Vec<(&WeakId, usize)> = self.0.iter().map(|(id, votes)| (*id, votes.len())).collect();
-        sorted_tally.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let mut sorted_tally: Vec<TallyItem> = self.0.iter()
+            .map(|(id, votes)| {
+                TallyItem { option_id: **id, vote_count: votes.len() as u32 }
+            })
+            .collect();
+        sorted_tally.sort();
 
         write!(f, "Tally [")?;
-        for (id, votes) in sorted_tally {
-            write!(f, "({}: {}), ", id, votes)?;
+        for item in sorted_tally {
+            write!(f, "{item}, ")?;
         }
         write!(f, "]")
     }
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct TallyItem {
+    option_id: WeakId,
+    vote_count: u32,
+}
+
+impl TallyItem {
+    pub fn new(id: u32, count: u32) -> Self {
+        Self {
+            option_id: WeakId(id),
+            vote_count: count,
+        }
+    }
+}
+
+impl Display for TallyItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "({}: {})", self.option_id, self.vote_count)
+    }
+}
+
+impl PartialOrd for TallyItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TallyItem {
+    /// Sorts by vote count descending, then id ascending
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.vote_count.cmp(&other.vote_count).reverse().then(self.option_id.cmp(&other.option_id))
+    }
+}
+
 /// A displayable version of Vec<&Ballot>
-struct BallotList<'a>(pub &'a Vec<&'a Ballot>);
+struct BallotList<'a>(pub &'a [Ballot]);
 impl<'a> std::fmt::Display for BallotList<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "BallotList [")?;
@@ -36,36 +74,39 @@ impl<'a> std::fmt::Display for BallotList<'a> {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize)]
 pub struct PollResult {
     pub poll_id: Id,
+    pub poll: Option<Poll>,
     pub evaluated_at: DateTime<Utc>,
 
-    pub tally: Vec<(WeakId, u32)>,
+    pub threshold: usize,
+    pub tally: Vec<TallyItem>,
     pub winners: Vec<WeakId>,
     pub eliminated: Vec<WeakId>,
 }
 
 impl PollResult {
-    pub fn evaluate(poll: &Poll, ballots: Vec<&Ballot>, max_rounds: u32, rng_seed: &[u8; 32]) -> PollResult {
+    pub fn evaluate(poll: &Poll, ballots: &[Ballot], max_rounds: u32, rng_seed: &[u8; 32]) -> PollResult {
         println!("{}", BallotList(&ballots));
 
         let mut result = PollResult {
             poll_id: poll.id.clone(),
+            poll: Some(poll.clone()),
             evaluated_at: Utc::now(),
+            threshold: ballots.len() / (poll.winner_count as usize + 1) + 1,
             tally: vec![],
             winners: vec![],
             eliminated: vec![],
         };
 
         // abort tallying if there are not enough votes to determine a winner
-        let threshold = ballots.len() / (poll.winner_count as usize + 1) + 1;
-        if threshold > ballots.len() {
+        if result.threshold > ballots.len() {
             return result;
         }
 
         // clone the list of ballots so we can shuffle and throw out invalid/settled/exhausted ballots
-        let mut ballots = ballots;
+        let mut ballots = Vec::from_iter(ballots.iter());
         ballots.shuffle(&mut StdRng::from_seed(*rng_seed));
 
         let vecs = poll.option_ids.iter().map(|_| vec![]);
@@ -94,7 +135,7 @@ impl PollResult {
                     // add this ballot to the list of votes for this option
                     let current_tally = tally.get_mut(id).unwrap();
                     current_tally.push(ballot);
-                    if current_tally.len() == threshold {
+                    if current_tally.len() == result.threshold {
                         result.winners.push(id.clone());
                     }
                 }
@@ -131,14 +172,17 @@ impl PollResult {
         // fill back in eliminated options with zero votes
         result.tally = poll.option_ids.iter()
             .map(|id| {
-                (id.clone(), match tally.get(id) {
-                    Some(votes) => votes.len() as u32,
-                    None => 0,
-                })
+                TallyItem {
+                    option_id: *id,
+                    vote_count: match tally.get(id) {
+                        Some(votes) => votes.len() as u32,
+                        None => 0,
+                    }
+                }
             })
             .collect();
         // sort by number of votes descending, then by id ascending
-        result.tally.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        result.tally.sort();
 
         result
     }
@@ -222,7 +266,7 @@ mod tests {
             close_after_votes: None,
         });
         let ballots = vec![];
-        let result = PollResult::evaluate(&poll, ballots, 1, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, &ballots, 1, &RNG_SEED);
         assert_eq!(result.winners, vec![] as Vec<WeakId>, "Check winners");
         assert_eq!(result.eliminated, vec![] as Vec<WeakId>, "Check eliminated");
         assert_eq!(result.tally, vec![], "Check tally");
@@ -236,10 +280,14 @@ mod tests {
             vec![1],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 1, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, ballots.as_ref(), 1, &RNG_SEED);
         assert_eq!(result.winners, &[1], "Check winners");
         assert_eq!(result.eliminated, vec![] as Vec<WeakId>, "Check eliminated");
-        assert_eq!(result.tally, &[(WeakId(1), 2), (WeakId(2), 1), (WeakId(0), 0)], "Check tally");
+        assert_eq!(result.tally, &[
+            TallyItem::new(1, 2),
+            TallyItem::new(2, 1),
+            TallyItem::new(0, 0)],
+            "Check tally");
     }
 
     #[test]
@@ -253,10 +301,14 @@ mod tests {
             vec![2, 0],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, ballots.as_ref(), 2, &RNG_SEED);
         assert_eq!(result.winners, &[0], "Check winners");
         assert_eq!(result.eliminated, &[2], "Check eliminated");
-        assert_eq!(result.tally, &[(WeakId(0), 3), (WeakId(1), 2), (WeakId(2), 0)], "Check tally");
+        assert_eq!(result.tally, &[
+            TallyItem::new(0, 3),
+            TallyItem::new(1, 2),
+            TallyItem::new(2, 0)],
+            "Check tally");
     }
 
     #[test]
@@ -268,10 +320,14 @@ mod tests {
             vec![2, 0],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, ballots.as_ref(), 2, &RNG_SEED);
         assert_eq!(result.winners, &[0], "Check winners");
         assert_eq!(result.eliminated, &[2], "Check eliminated");
-        assert_eq!(result.tally, &[(WeakId(0), 3), (WeakId(1), 1), (WeakId(2), 0)], "Check tally");
+        assert_eq!(result.tally, &[
+            TallyItem::new(0, 3),
+            TallyItem::new(1, 1),
+            TallyItem::new(2, 0)],
+            "Check tally");
     }
 
     #[test]
@@ -281,10 +337,13 @@ mod tests {
             vec![1],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 1, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, ballots.as_ref(), 1, &RNG_SEED);
         assert_eq!(result.winners, &[0, 1], "Check winners");
         assert_eq!(result.eliminated, vec![] as Vec<WeakId>, "Check eliminated");
-        assert_eq!(result.tally, &[(WeakId(0), 1), (WeakId(1), 1)], "Check tally");
+        assert_eq!(result.tally, &[
+            TallyItem::new(0, 1),
+            TallyItem::new(1, 1)],
+            "Check tally");
     }
 
     #[test]
@@ -299,9 +358,13 @@ mod tests {
             vec![2, 1],
         ]);
 
-        let result = PollResult::evaluate(&poll, ballots.iter().collect(), 2, &RNG_SEED);
+        let result = PollResult::evaluate(&poll, ballots.as_ref(), 2, &RNG_SEED);
         assert_eq!(result.winners, &[1, 0], "Check winners");
         assert_eq!(result.eliminated, &[2], "Check eliminated");
-        assert_eq!(result.tally, &[(WeakId(0), 3), (WeakId(1), 3), (WeakId(2), 0)], "Check tally");
+        assert_eq!(result.tally, &[
+            TallyItem::new(0, 3),
+            TallyItem::new(1, 3),
+            TallyItem::new(2, 0)],
+            "Check tally");
     }
 }

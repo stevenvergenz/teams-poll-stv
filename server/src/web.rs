@@ -1,6 +1,7 @@
 mod db;
 mod poll_api;
 mod ballot_api;
+mod result_api;
 
 use std::env;
 use uuid::Uuid;
@@ -64,6 +65,11 @@ pub async fn setup() {
         .and(warp::header::<Uuid>("user-id"))
         .map(ballot_api::delete);
 
+    let get_result = warp::get()
+        .and(warp::path!("api" / "poll" / Uuid / "result"))
+        .and(warp::path::end())
+        .map(result_api::get_result);
+
     // Define the static files route
     let cwd = env::current_exe().expect("Could not get current executable path");
     let static_path = cwd.parent().unwrap()
@@ -78,6 +84,7 @@ pub async fn setup() {
     let routes =
         new_poll.or(get_poll).or(update_poll).or(delete_poll)
         .or(new_ballot).or(get_ballot).or(update_ballot).or(delete_ballot)
+        .or(get_result)
         .or(static_files);
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;
 }

@@ -27,15 +27,19 @@ pub struct Poll {
     pub owner: Option<User>,
     pub created_at: DateTime<Utc>,
     pub closed_at: Option<DateTime<Utc>>,
+
+    #[serde(skip)]
+    pub rng_seed: [u8; 32],
 }
 
 impl Poll {
-    pub fn new(settings: CreatePollSettings, options: Vec<PollOption>, owner: User, ) -> Self {
+    pub fn new(settings: CreatePollSettings, options: Vec<PollOption>, owner: User, rng_seed: Vec<u8>) -> Self {
         let mut poll = Self::from(settings);
         poll.option_ids = options.iter().map(|o| o.id).collect();
         poll.options = Some(options);
         poll.owner_id = owner.id.clone();
         poll.owner = Some(owner);
+        poll.rng_seed.copy_from_slice(&rng_seed);
         poll
     }
 }
@@ -74,6 +78,7 @@ impl From<CreatePollSettings> for Poll {
             owner: None,
             created_at: Utc::now(),
             closed_at: None,
+            rng_seed: [0u8; 32],
         }
     }
 }
@@ -104,8 +109,8 @@ impl Default for CreatePollSettings {
         let unvalidated_default = UnvalidatedCreatePollSettings::default();
         Self {
             id: None,
-            title: String::from("<Default>"),
-            options: vec![String::from("Default option 1"), String::from("Default option 2")],
+            title: String::new(),
+            options: vec![],
             winner_count: unvalidated_default.winner_count as u8,
             write_ins_allowed: unvalidated_default.write_ins_allowed,
             close_after_time: unvalidated_default.close_after_time,

@@ -26,8 +26,10 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
     }
 
     let (settings, options) = models::CreatePollSettings::from(&owner.id, settings);
-
-    let poll: models::Poll = match diesel::insert_into(schema::polls::table).values(settings).get_result(connection) {
+    let result = diesel::insert_into(schema::polls::table)
+        .values(settings)
+        .get_result(connection);
+    let poll: models::Poll = match result {
         Err(err) => {
             return reply::with_status(
                 format!("Failed to create new poll: {err}"),
@@ -36,6 +38,7 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
         },
         Ok(result) => result,
     };
+    println!("New poll: {}", poll.id);
 
     let options: Vec<models::PollOption> = options.into_iter().enumerate().map(|(index, label)| {
         models::PollOption {

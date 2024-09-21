@@ -1,7 +1,8 @@
-use std::convert::TryInto;
+use std::convert::{Into, TryInto};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use rand::{self, RngCore};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -25,6 +26,7 @@ pub struct Poll {
     pub owner_id: Uuid,
     pub created_at: NaiveDateTime,
     pub closed_at: Option<NaiveDateTime>,
+    pub rng_seed: Vec<u8>,
 }
 
 impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
@@ -40,26 +42,24 @@ impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
             owner_id: _,
             created_at,
             closed_at,
+            rng_seed,
         }, options, owner) = self;
 
-        // re-validate timeless settings
-        let settings = voting::UnvalidatedCreatePollSettings {
-            title, winner_count, write_ins_allowed, close_after_votes,
-            ..voting::UnvalidatedCreatePollSettings::from(voting::CreatePollSettings::default())
+        let settings = voting::CreatePollSettings {
+            id: Some(id),
+            title,
+            options: vec![],
+            winner_count: winner_count as u8,
+            write_ins_allowed,
+            close_after_time: close_after_time.map(|t| t.and_utc()),
+            close_after_votes: close_after_votes.map(|v| v as u32),
         };
-        let mut settings = match voting::CreatePollSettings::try_from(settings) {
-            Err(err) => {
-                return Err(err.with_context("poll", error::ContextId::Uuid(id)))
-            },
-            Ok(p) => p,
-        };
-        settings.id = Some(id);
 
-        // straight-up copy unvalidated, generated, or timely elements
         let mut poll = voting::Poll::new(
             settings,
             options.into_iter().map(|o| o.into()).collect(),
             owner.into(),
+            rng_seed,
         );
         poll.close_after_time = close_after_time.map(|t| t.and_utc());
         poll.created_at = created_at.and_utc();
@@ -81,6 +81,8 @@ pub struct CreatePollSettings {
     pub close_after_votes: Option<i32>,
 
     pub owner_id: Uuid,
+
+    pub rng_seed: Vec<u8>,
 }
 
 impl CreatePollSettings {
@@ -93,7 +95,7 @@ impl CreatePollSettings {
         close_after_time,
         close_after_votes,
     }: voting::CreatePollSettings) -> (Self, Vec<String>) {
-        let poll_settings = Self {
+        let mut poll_settings = Self {
             id: None, // discard any ID provided as input, force random ID from DB
             title,
             winner_count: winner_count as i32,
@@ -101,7 +103,9 @@ impl CreatePollSettings {
             close_after_time: close_after_time.map(|t| t.naive_utc()),
             close_after_votes: close_after_votes.map(|v| v as i32),
             owner_id: owner_id.clone(),
+            rng_seed: vec![0; 32],
         };
+        rand::thread_rng().fill_bytes(&mut poll_settings.rng_seed);
 
         (poll_settings, options)
     }
@@ -231,7 +235,7 @@ impl CreateBallot {
     }
 }
 
-#[derive(Associations, Queryable, Selectable, Insertable)]
+#[derive(Associations, Queryable, Selectable, Insertable, Serialize)]
 #[diesel(table_name = schema::votes)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[diesel(belongs_to(Ballot, foreign_key = ballot_id))]
