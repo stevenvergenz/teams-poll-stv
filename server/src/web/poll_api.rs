@@ -13,56 +13,41 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
 
     // todo: get owner = session user
     let owner = models::User { id: user_id, display_name: String::from("Anonymous") };
-    let user_upsert_result = diesel::insert_into(schema::users::table)
-        .values(&owner)
-        .on_conflict_do_nothing()
-        .execute(connection);
-
-    if let Err(err) = user_upsert_result {
-        return reply::with_status(
-            format!("Error creating user: {err}"),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ).into_response();
-    }
-
     let (settings, options) = models::CreatePollSettings::from(&owner.id, settings);
-    let result = diesel::insert_into(schema::polls::table)
-        .values(settings)
-        .get_result(connection);
-    let poll: models::Poll = match result {
-        Err(err) => {
-            return reply::with_status(
-                format!("Failed to create new poll: {err}"),
-                StatusCode::BAD_REQUEST,
-            ).into_response();
-        },
-        Ok(result) => result,
-    };
-    println!("New poll: {}", poll.id);
-
-    let options: Vec<models::PollOption> = options.into_iter().enumerate().map(|(index, label)| {
+    let mut options: Vec<models::PollOption> = options.into_iter().enumerate().map(|(index, label)| {
         models::PollOption {
             id: index as i32,
-            poll_id: poll.id.clone(),
+            poll_id: Uuid::nil(),
             description: label,
         }
     }).collect();
 
-    match diesel::insert_into(schema::polloptions::table).values(&options).execute(connection) {
+    let result: Result<models::Poll, DbError> = connection.transaction(|connection| {
+        diesel::insert_into(schema::users::table)
+            .values(&owner)
+            .on_conflict_do_nothing()
+            .execute(connection)?;
+
+        let poll: models::Poll = diesel::insert_into(schema::polls::table)
+            .values(settings)
+            .get_result(connection)?;
+        println!("New poll: {}", poll.id);
+
+        for option in options.iter_mut() {
+            option.poll_id = poll.id;
+        }
+
+        diesel::insert_into(schema::polloptions::table).values(&options).execute(connection)?;
+
+        Ok(poll)
+    });
+
+    let poll = match result {
         Err(err) => {
-            return reply::with_status(
-                format!("Failed to add options to poll {}: {err}", poll.id),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response();
+            return error::db_insert(err, "poll").into_response();
         },
-        Ok(affected) if affected != options.len() => {
-            return reply::with_status(
-                format!("Failed to create all {} options to poll {}", options.len(), &poll.id),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response();
-        },
-        Ok(_) => { },
-    }
+        Ok(p) => p,
+    };
 
     match get_internal(connection, &poll.id) {
         Err(err) => {

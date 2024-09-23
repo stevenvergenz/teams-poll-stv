@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 use std::convert::From;
 
 use chrono::{DateTime, Utc};
-use diesel::result::Error as DbError;
+use diesel::result::{DatabaseErrorKind, Error as DbError};
 use uuid::Uuid;
 use warp::http::StatusCode;
 use warp::reply::{self, Reply};
@@ -170,4 +170,37 @@ pub fn db_get(source: DbError, code: StatusCode, subject: &str, object: Option<&
         None => format!("Failed to retrieve {subject}"),
     };
     HttpGetError { message, code, source: Some(source) }
+}
+
+pub fn db_insert(source: DbError, subject: &str) -> HttpGetError {
+    match source {
+        DbError::DatabaseError(DatabaseErrorKind::UniqueViolation, ..) => {
+            HttpGetError {
+                message: format!("{subject} with that ID already exists"),
+                code: StatusCode::CONFLICT,
+                source: Some(source),
+            }
+        },
+        DbError::DatabaseError(DatabaseErrorKind::NotNullViolation, ..) => {
+            HttpGetError {
+                message: format!("{subject} is missing fields"),
+                code: StatusCode::BAD_REQUEST,
+                source: Some(source),
+            }
+        },
+        DbError::DatabaseError(DatabaseErrorKind::ForeignKeyViolation, ..) => {
+            HttpGetError {
+                message: format!("{subject} has bad references"),
+                code: StatusCode::BAD_REQUEST,
+                source: Some(source),
+            }
+        }
+        _ => {
+            HttpGetError {
+                message: format!("Error inserting {subject}"),
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                source: Some(source),
+            }
+        }
+    }
 }
