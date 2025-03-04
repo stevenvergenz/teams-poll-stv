@@ -1,0 +1,47 @@
+[package]
+name = "teams-poll-stv"
+version = "0.1.0"
+authors = ["Steven Vergenz <1882376+stevenvergenz@users.noreply.github.com>"]
+edition = "2021"
+
+[dependencies]
+warp = { version = "0.3", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+uuid = { version = "1.10.0", features = ["serde", "v4"], optional = true }
+chrono = { version = "0.4.38", features = ["std", "clock", "now", "serde"], optional = true }
+serde_json = { version = "1.0.127", optional = true }
+serde = { version = "1.0.209", features = ["derive"], optional = true }
+rand = { version = "0.8.5", optional = true }
+diesel = { version = "2.2.4", features = ["chrono", "postgres", "uuid"], optional = true }
+dotenvy = { version = "0.15.7", optional = true }
+dioxus = { version = "0.6.0", features = ["router", "fullstack"], optional = true }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+server = [
+    "dioxus/server",
+    "dep:warp",
+    "dep:tokio",
+    "dep:uuid",
+    "dep:chrono",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:rand",
+    "dep:diesel",
+    "dep:dotenvy",
+]
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
