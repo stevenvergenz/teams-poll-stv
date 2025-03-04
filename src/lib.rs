@@ -1,6 +1,8 @@
 #[cfg(feature = "server")]
 pub mod voting;
 #[cfg(feature = "server")]
-pub mod web;
+pub mod rest_api;
 #[cfg(feature = "server")]
-mod error;
+pub mod error;
+
+pub mod app;

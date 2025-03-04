@@ -1,0 +1,146 @@
+/*! tailwindcss v4.0.9 | MIT License | https://tailwindcss.com */
+.visible {
+  visibility: visible;
+}
+.static {
+  position: static;
+}
+.container {
+  width: 100%;
+}
+.flex {
+  display: flex;
+}
+.table {
+  display: table;
+}
+.min-h-screen {
+  min-height: 100vh;
+}
+.flex-grow {
+  flex-grow: 1;
+}
+.transform {
+  transform: var(--tw-rotate-x) var(--tw-rotate-y) var(--tw-rotate-z) var(--tw-skew-x) var(--tw-skew-y);
+}
+.flex-col {
+  flex-direction: column;
+}
+.flex-row {
+  flex-direction: row;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+.items-center {
+  align-items: center;
+}
+.gap-8 {
+  gap: calc(var(--spacing) * 8);
+}
+.border {
+  border-style: var(--tw-border-style);
+  border-width: 1px;
+}
+.bg-bg2 {
+  background-color: var(--color-bg2);
+}
+.py-8 {
+  padding-block: calc(var(--spacing) * 8);
+}
+.text-center {
+  text-align: center;
+}
+.text-wrap {
+  text-wrap: wrap;
+}
+.italic {
+  font-style: italic;
+}
+.filter {
+  filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
+}
+:root, :host {
+  --spacing: 1px;
+  --color-bg2: #f1f1f1;
+}
+html, body, #main {
+  min-height: 100vh;
+  margin: 0;
+}
+.w-page {
+  width: 800px;
+  max-width: 100vw;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+@property --tw-rotate-x {
+  syntax: "*";
+  inherits: false;
+  initial-value: rotateX(0);
+}
+@property --tw-rotate-y {
+  syntax: "*";
+  inherits: false;
+  initial-value: rotateY(0);
+}
+@property --tw-rotate-z {
+  syntax: "*";
+  inherits: false;
+  initial-value: rotateZ(0);
+}
+@property --tw-skew-x {
+  syntax: "*";
+  inherits: false;
+  initial-value: skewX(0);
+}
+@property --tw-skew-y {
+  syntax: "*";
+  inherits: false;
+  initial-value: skewY(0);
+}
+@property --tw-border-style {
+  syntax: "*";
+  inherits: false;
+  initial-value: solid;
+}
+@property --tw-blur {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-brightness {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-contrast {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-grayscale {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-hue-rotate {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-invert {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-opacity {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-saturate {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-sepia {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-drop-shadow {
+  syntax: "*";
+  inherits: false;
+}
