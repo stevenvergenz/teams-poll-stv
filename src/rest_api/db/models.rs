@@ -1,4 +1,4 @@
-use std::convert::{Into, TryInto};
+use std::convert::Into;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -7,7 +7,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::voting;
-use crate::error;
+use crate::error::{ContextError, ContextId};
 use super::schema;
 
 #[derive(Associations, Identifiable, Queryable, Selectable, Serialize)]
@@ -192,11 +192,13 @@ pub struct Ballot {
     pub created_at: NaiveDateTime,
 }
 
-impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
-    type Error = error::ValidationError;
-    fn try_into(self) -> Result<voting::Ballot, error::ValidationError> {
-        let (db_ballot, db_votes, db_voter, poll) = self;
-
+impl Ballot {
+    pub fn try_into(
+        db_ballot: Self,
+        db_votes: Vec<Vote>,
+        db_voter: User,
+        poll: voting::Poll,
+    ) -> Result<voting::Ballot, ContextError> {
         let mut ballot = voting::UnvalidatedCreateBallot::new();
         for i in 0..db_votes.len() {
             let ov = db_votes.iter().find(|v| v.preference == i as i32);
@@ -204,19 +206,11 @@ impl TryInto<voting::Ballot> for (Ballot, Vec<Vote>, User, voting::Poll) {
                 ballot.ranked_preferences.push(voting::WeakId(v.option as u32));
             }
             else {
-                return Err(error::ballot_incomplete_selection(i)
-                    .with_context("ballot", error::ContextId::I32(db_ballot.id)));
+                return Err(ContextError::ballot_incomplete_selection(i, ContextId::I32(db_ballot.id)));
             }
         }
 
-        let ballot = match ballot.validate(poll) {
-            Err(err) => {
-                return Err(err.with_context("ballot", error::ContextId::I32(db_ballot.id)))
-            },
-            Ok(b) => b,
-        };
-
-        Ok(voting::Ballot::new(db_voter.into(), ballot))
+        Ok(voting::Ballot::new(db_voter.into(), ballot.validate(poll)?))
     }
 }
 

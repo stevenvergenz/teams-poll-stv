@@ -5,14 +5,14 @@ use warp::http::StatusCode;
 
 use crate::voting;
 use super::db::{establish_connection, schema, models};
-use super::poll_api::get_internal as get_poll;
+use super::poll_api::get as get_poll;
 
 pub fn get_result(poll_id: Uuid) -> Response {
     let conn = &mut establish_connection();
 
     // fetch poll
     let poll = match get_poll(conn, &poll_id) {
-        Err(err) => { return err.into_response(); },
+        Err(err) => { return err.into(); },
         Ok(p) => p,
     };
 

@@ -1,15 +1,23 @@
 use chrono::{DateTime, Utc};
+#[cfg(feature = "server")]
 use diesel::prelude::*;
+#[cfg(feature = "server")]
 use diesel::result::{DatabaseErrorKind, Error as DbError};
 use uuid::Uuid;
-use warp::http::StatusCode;
-use warp::reply::{self, Reply, Response};
+#[cfg(feature = "server")]
+use warp::{
+    http::StatusCode,
+    reply::{self, Reply, Response},
+};
 
-use crate::error;
+use crate::error::{ContextError, ContextId};
 use crate::voting;
+#[cfg(feature = "server")]
 use super::db::{establish_connection, models, schema};
-use super::poll_api::get_internal as get_poll;
+#[cfg(feature = "server")]
+use super::poll_api::get as get_poll;
 
+#[cfg(feature = "server")]
 pub fn new(poll_id: Uuid, user_id: Uuid, ballot: voting::UnvalidatedCreateBallot) -> Response {
     let connection = &mut establish_connection();
 
@@ -81,21 +89,23 @@ pub fn new(poll_id: Uuid, user_id: Uuid, ballot: voting::UnvalidatedCreateBallot
     reply::with_status(reply::json(&ballot), StatusCode::CREATED).into_response()
 }
 
+#[cfg(feature = "server")]
 pub fn get(poll_id: Uuid, user_id: Uuid) -> Response {
     let connection = &mut establish_connection();
     match get_internal(connection, &poll_id, &user_id) {
-        Err(err) => err.into_response(),
+        Err(err) => err.into(),
         Ok(ballot) => reply::json(&ballot).into_response(),
     }
 }
 
+#[cfg(feature = "server")]
 pub fn update(poll_id: Uuid, user_id: Uuid, new_ballot: voting::UnvalidatedCreateBallot) -> Response {
     let connection = &mut establish_connection();
 
     // fetch poll from db
     let poll = match get_poll(connection, &poll_id) {
         Err(err) => {
-            return err.into_response();
+            return err.into();
         },
         Ok(p) => p,
     };
@@ -165,11 +175,12 @@ pub fn update(poll_id: Uuid, user_id: Uuid, new_ballot: voting::UnvalidatedCreat
     }
 
     match get_internal(connection, &poll_id, &user_id) {
-        Err(err) => err.into_response(),
+        Err(err) => err.into(),
         Ok(ballot) => reply::with_status(reply::json(&ballot), StatusCode::OK).into_response(),
     }
 }
 
+#[cfg(feature = "server")]
 pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     let connection = &mut establish_connection();
     let result = diesel::delete(schema::ballots::table.filter(
@@ -192,9 +203,10 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     }
 }
 
+#[cfg(feature = "server")]
 fn get_internal(
     connection: &mut PgConnection, poll_id: &Uuid, user_id: &Uuid
-) -> Result<voting::Ballot, error::HttpGetError> {
+) -> Result<voting::Ballot, ContextError> {
     // fetch ballot from db
     let ballot_result: Result<(models::Ballot, models::User), DbError> =
         schema::ballots::table.filter(
@@ -207,11 +219,8 @@ fn get_internal(
         .first(connection);
 
     let (db_ballot, db_user) = match ballot_result {
-        Err(err @ DbError::NotFound) => {
-            return Err(error::db_get(err, StatusCode::NOT_FOUND, "ballot/voter", None));
-        }
         Err(err) => {
-            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "ballot/voter", None));
+            return Err(ContextError::from_db(err, "fetching ballot", "user", ContextId::Uuid(*user_id)));
         },
         Ok(r) => r,
     };
@@ -223,19 +232,11 @@ fn get_internal(
 
     let db_votes = match votes_result {
         Err(err) => {
-            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "vote", Some("ballot")));
+            return Err(ContextError::from_db(err, "fetching votes", "user", ContextId::Uuid(*user_id)));
         },
         Ok(v) => v,
     };
 
     let poll = get_poll(connection, poll_id)?;
-
-    let ballot = match (db_ballot, db_votes, db_user, poll).try_into() {
-        Err(err) => {
-            return Err(error::HttpGetError::from(err));
-        },
-        Ok(b) => b,
-    };
-
-    Ok(ballot)
+    models::Ballot::try_into(db_ballot, db_votes, db_user, poll)
 }

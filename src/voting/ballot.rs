@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use super::id::WeakId;
 use super::poll::Poll;
 use super::user::{User, PossibleUser};
-use crate::error;
+use crate::error::{ContextError, ContextId};
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -84,18 +84,18 @@ impl UnvalidatedCreateBallot {
         }
     }
 
-    pub fn validate(self, poll: Poll) -> Result<CreateBallot, error::ValidationError> {
+    pub fn validate(self, poll: Poll) -> Result<CreateBallot, ContextError> {
         let Self { ranked_preferences, .. } = self;
         if ranked_preferences.is_empty() {
-            return Err(error::ballot_empty());
+            return Err(ContextError::ballot_empty());
         }
 
         for (i, pref) in ranked_preferences.iter().enumerate() {
             if !poll.option_ids.contains(&pref) {
-                return Err(error::ballot_invalid_selection(i, pref.0));
+                return Err(ContextError::ballot_invalid_selection(i, pref.0, ContextId::None));
             }
             if let Some((old_idx, _)) = ranked_preferences[0..i].iter().enumerate().find(|(_, p)| *p == pref) {
-                return Err(error::ballot_duplicate_selection(pref.0, (old_idx, i)))
+                return Err(ContextError::ballot_duplicate_selection(pref.0, (old_idx, i), ContextId::None))
             }
         }
 

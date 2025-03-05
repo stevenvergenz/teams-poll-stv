@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::id::{Id, WeakId};
 use super::user::User;
-use crate::error;
+use crate::error::ContextError;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Poll {
@@ -93,7 +93,7 @@ pub struct PollOption {
 }
 
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(try_from = "UnvalidatedCreatePollSettings")]
 pub struct CreatePollSettings {
     pub id: Option<Uuid>,
@@ -153,7 +153,7 @@ const WINNERS_BOUNDS: RangeInclusive<i32> = 1 ..= u8::MAX as i32;
 const VOTES_BOUNDS: RangeInclusive<i64> = 2i64 ..= i32::MAX as i64;
 
 impl TryFrom<UnvalidatedCreatePollSettings> for CreatePollSettings {
-    type Error = error::ValidationError;
+    type Error = ContextError;
 
     fn try_from(UnvalidatedCreatePollSettings {
         title,
@@ -164,22 +164,22 @@ impl TryFrom<UnvalidatedCreatePollSettings> for CreatePollSettings {
         close_after_votes,
     }: UnvalidatedCreatePollSettings) -> Result<Self, Self::Error> {
         if !TITLE_LENGTH_BOUNDS.contains(&title.len()) {
-            return Err(error::poll_title_invalid_size(TITLE_LENGTH_BOUNDS, title.len()));
+            return Err(ContextError::poll_title_invalid_size(TITLE_LENGTH_BOUNDS, title.len()));
         }
         if !OPTIONS_LENGTH_BOUNDS.contains(&options.len()) {
-            return Err(error::poll_option_limit_exceeded(OPTIONS_LENGTH_BOUNDS, options.len()));
+            return Err(ContextError::poll_option_limit_exceeded(OPTIONS_LENGTH_BOUNDS, options.len()));
         }
         if !WINNERS_BOUNDS.contains(&winner_count) {
-            return Err(error::poll_winners_limit_exceeded(WINNERS_BOUNDS, winner_count));
+            return Err(ContextError::poll_winners_limit_exceeded(WINNERS_BOUNDS, winner_count));
         }
         if let Some(time) = close_after_time {
             if time < Utc::now() + Duration::from_secs(60) {
-                return Err(error::poll_duration_invalid(1, &time))
+                return Err(ContextError::poll_duration_invalid(1, &time))
             }
         }
         if let Some(votes) = close_after_votes {
             if !VOTES_BOUNDS.contains(&(votes as i64)) {
-                return Err(error::poll_votes_limit_exceeded(VOTES_BOUNDS, votes as i64));
+                return Err(ContextError::poll_votes_limit_exceeded(VOTES_BOUNDS, votes as i64));
             }
         }
 
@@ -196,7 +196,7 @@ impl TryFrom<UnvalidatedCreatePollSettings> for CreatePollSettings {
 }
 
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UnvalidatedCreatePollSettings {
     pub title: String,
@@ -266,7 +266,7 @@ impl Default for UpdatePollSettings {
 }
 
 impl TryFrom<UnvalidatedUpdatePollSettings> for UpdatePollSettings {
-    type Error = error::ValidationError;
+    type Error = ContextError;
 
     fn try_from(UnvalidatedUpdatePollSettings {
         title,
@@ -277,25 +277,25 @@ impl TryFrom<UnvalidatedUpdatePollSettings> for UpdatePollSettings {
     }: UnvalidatedUpdatePollSettings) -> Result<Self, Self::Error> {
         if let Some(title) = &title {
             if !TITLE_LENGTH_BOUNDS.contains(&title.len()) {
-                return Err(error::poll_title_invalid_size(TITLE_LENGTH_BOUNDS, title.len()));
+                return Err(ContextError::poll_title_invalid_size(TITLE_LENGTH_BOUNDS, title.len()));
             }
         }
         if let Some(winner_count) = winner_count {
             if !WINNERS_BOUNDS.contains(&(winner_count as i32)) {
-                return Err(error::poll_winners_limit_exceeded(WINNERS_BOUNDS, winner_count as i32));
+                return Err(ContextError::poll_winners_limit_exceeded(WINNERS_BOUNDS, winner_count as i32));
             }
         }
         if let Some(otime) = close_after_time {
             if let Some(time) = otime {
                 if time < Utc::now() + Duration::from_secs(60) {
-                    return Err(error::poll_duration_invalid(1, &time))
+                    return Err(ContextError::poll_duration_invalid(1, &time))
                 }
             }
         }
         if let Some(ovotes) = close_after_votes {
             if let Some(votes) = ovotes {
                 if !VOTES_BOUNDS.contains(&(votes as i64)) {
-                    return Err(error::poll_votes_limit_exceeded(VOTES_BOUNDS, votes as i64));
+                    return Err(ContextError::poll_votes_limit_exceeded(VOTES_BOUNDS, votes as i64));
                 }
             }
         }
@@ -311,7 +311,7 @@ impl TryFrom<UnvalidatedUpdatePollSettings> for UpdatePollSettings {
 }
 
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UnvalidatedUpdatePollSettings {
     pub title: Option<String>,

@@ -1,36 +1,46 @@
 use dioxus::prelude::*;
-use crate::{
-    rest_api::poll_api::list,
-    voting::Poll,
-};
+use crate::rest_api::poll_api::list_ssr;
 
 #[component]
 pub fn Home() -> Element {
-    let polls_future = use_server_future(list);
-
-    let poll_items = if let Ok(polls_res) = polls_future {
-        if let Ok(polls) = polls_res.value().try_read() {
-            polls.iter().map(|poll: &Poll| {
-                rsx! {
-                    li {
-                        "&poll.title"
+    let polls = use_server_future(list_ssr)?;
+    let poll_items = match &*polls.read_unchecked() {
+        Some(Ok(polls)) => {
+            rsx! {
+                p { "{polls.len()} items" }
+                ul {
+                    for p in polls {
+                        li {
+                            Link {
+                                to: format!("/poll/{}", p.id),
+                                title: p.title.as_str(),
+                            }
+                        }
                     }
                 }
-            }).collect()
+            }
+        },
+        Some(Err(e)) => {
+            rsx! {
+                div {
+                    h2 { "Error" }
+                    p { "{e}" }
+                }
+            }
+        },
+        None => {
+            rsx! {
+                div {
+                    h2 { "Loading..." }
+                }
+            }
         }
-        else {
-            vec![]
-        }
-    }
-    else {
-        vec![]
     };
 
     rsx! {
         div {
             id: "home",
-            h1 { "Dioxus" }
-            p { "A fullstack web framework for Rust." }
+            h1 { "Polls" }
         }
         div {
             {poll_items}

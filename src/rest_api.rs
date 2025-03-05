@@ -1,5 +1,4 @@
 pub mod poll_api;
-#[cfg(feature = "server")]
 pub mod ballot_api;
 #[cfg(feature = "server")]
 pub mod result_api;
@@ -23,25 +22,25 @@ pub async fn setup() {
         .and(warp::path::end())
         .and(warp::header::<Uuid>("user-id"))
         .and(warp::body::json::<CreatePollSettings>())
-        .map(poll_api::new);
+        .map(poll_api::new_api);
 
     let get_poll = warp::get()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
-        .map(poll_api::get);
+        .map(poll_api::get_api);
 
     let update_poll = warp::patch()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
         .and(warp::header::<Uuid>("user-id"))
         .and(warp::body::json::<UpdatePollSettings>())
-        .map(poll_api::update);
+        .map(poll_api::update_api);
 
     let delete_poll = warp::delete()
         .and(warp::path!("api" / "poll" / Uuid))
         .and(warp::path::end())
         .and(warp::header::<Uuid>("user-id"))
-        .map(poll_api::delete);
+        .map(poll_api::delete_api);
 
     // define the ballot API
 

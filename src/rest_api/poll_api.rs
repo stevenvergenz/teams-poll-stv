@@ -2,7 +2,10 @@ use dioxus::prelude::*;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::{error, voting};
+use crate::{
+    error::{ContextError, ContextId},
+    voting,
+};
 
 #[cfg(feature = "server")]
 use diesel::prelude::*;
@@ -16,8 +19,8 @@ use warp::{
 #[cfg(feature = "server")]
 use super::db::{establish_connection, models, schema};
 
-#[server]
-pub async fn list() -> Result<Vec<voting::Poll>, ServerFnError> {
+#[cfg(feature = "server")]
+fn list() -> Result<Vec<voting::Poll>, ContextError> {
     let connection = &mut establish_connection();
     let results: Result<Vec<(models::Poll, models::User)>, DbError> = schema::polls::table
         .inner_join(schema::users::table)
@@ -28,40 +31,18 @@ pub async fn list() -> Result<Vec<voting::Poll>, ServerFnError> {
         ))
         .load(connection);
 
-    let polls_users: Vec<(models::Poll, models::User)> = if let Err(e) = results {
-        return Err(ServerFnError::ServerError(e.to_string()));
+    match results {
+        Err(e) => {
+            Err(ContextError::from_db(e, "listing", "polls", ContextId::None))
+        },
+        Ok(polls_users) => {
+            Ok(polls_users.into_iter().map(|(p, u)| p.into(u, vec![])).collect())
+        },
     }
-    else {
-        results.unwrap()
-    };
-
-    let results: Result<Vec<models::PollOption>, DbError> = schema::polloptions::table
-        .filter(schema::polloptions::poll_id.eq_any(polls_users.iter().map(|(p, _)| p.id).collect::<Vec<Uuid>>()))
-        .select(models::PollOption::as_select())
-        .load(connection);
-
-    let options = if let Err(e) = results {
-        return Err(ServerFnError::ServerError(e.to_string()));
-    }
-    else {
-        results.unwrap()
-    };
-
-    let mut poll_options = HashMap::new();
-    for option in options {
-        poll_options.entry(option.poll_id).or_insert(vec![]).push(option);
-    }
-
-    let polls = polls_users.into_iter().map(|(p, u)| {
-        let options = poll_options.remove(&p.id).unwrap_or(vec![]);
-        p.into(u, options)
-    }).collect();
-
-    Ok(polls)
 }
 
 #[cfg(feature = "server")]
-pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
+fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Result<voting::Poll, ContextError> {
     let connection = &mut establish_connection();
 
     // todo: get owner = session user
@@ -75,7 +56,7 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
         }
     }).collect();
 
-    let result: Result<models::Poll, DbError> = connection.transaction(|connection| {
+    let result = connection.transaction(|connection| {
         diesel::insert_into(schema::users::table)
             .values(&owner)
             .on_conflict_do_nothing()
@@ -97,78 +78,71 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
 
     let poll = match result {
         Err(err) => {
-            return error::db_insert(err, "poll").into_response();
+            return Err(ContextError::from_db(err, "creating", "poll", ContextId::None));
         },
         Ok(p) => p,
     };
 
-    match get_internal(connection, &poll.id) {
+    get(connection, &poll.id)
+}
+
+#[cfg(feature = "server")]
+pub fn get(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, ContextError> {
+    // fetch poll from db
+    let result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
+        .inner_join(schema::users::table)
+        .select((
+            models::Poll::as_select(),
+            models::User::as_select(),
+        ))
+        .first(connection);
+
+    let (poll, user) = match result {
         Err(err) => {
-            reply::with_status(
-                format!("Failed to fetch poll with id {} after creating: {err:?}", &poll.id),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response()
+            return Err(ContextError::from_db(err, "fetching", "poll", ContextId::Uuid(*id)));
         },
-        Ok(poll) => reply::with_status(reply::json(&poll), StatusCode::CREATED).into_response(),
-    }
+        Ok(pu) => pu,
+    };
+
+    let result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&poll)
+        .select(models::PollOption::as_select())
+        .load(connection);
+
+    let options = match result {
+        Err(e) => {
+            return Err(ContextError::from_db(e, "fetching", "options", ContextId::Uuid(*id)));
+        },
+        Ok(o) => o,
+    };
+
+    Ok(poll.into(user, options))
 }
 
 #[cfg(feature = "server")]
-pub fn get(id: Uuid) -> Response {
-    let connection = &mut establish_connection();
-    match get_internal(connection, &id) {
-        Ok(poll) => reply::json(&poll).into_response(),
-        Err(err) => err.into_response(),
-    }
-}
-
-#[cfg(feature = "server")]
-pub fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Response {
+fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Result<voting::Poll, ContextError> {
     let settings = models::UpdatePollSettings::from(settings);
 
     let connection = &mut establish_connection();
     let update = diesel::update(
         schema::polls::table.filter(
             schema::polls::id.eq(poll_id)
-            .and(schema::polls::owner_id.eq(user_id))
-        )
-    ).set(settings).execute(connection);
+                .and(schema::polls::owner_id.eq(user_id))))
+        .set(settings)
+        .execute(connection);
 
     match update {
-        Err(DbError::QueryBuilderError(_)) => {
-            reply::with_status(
-                format!("Cannot update poll {poll_id} without new values"),
-                StatusCode::BAD_REQUEST,
-            ).into_response()
-        },
-        Err(err) => {
-            reply::with_status(
-                format!("Failed to update poll with id {poll_id}: {err}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response()
+        Err(e) => {
+            return Err(ContextError::from_db(e, "updating", "poll", ContextId::Uuid(poll_id)));
         },
         Ok(0) => {
-            reply::with_status(reply::reply(), StatusCode::FORBIDDEN).into_response()
+            return Err(ContextError::poll_not_found(&poll_id));
         },
-        Ok(_) => match get_internal(connection, &poll_id) {
-            Err(err) => {
-                reply::with_status(
-                    format!("Update successful, but failed to retrieve result: {err:?}"),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                ).into_response()
-            },
-            Ok(poll) => {
-                reply::with_status(
-                    reply::json(&poll),
-                    StatusCode::OK,
-                ).into_response()
-            },
-        },
+        Ok(_) => get(&mut establish_connection(), &poll_id),
     }
 }
 
 #[cfg(feature = "server")]
-pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
+fn delete(poll_id: Uuid, user_id: Uuid) -> Result<(), ContextError> {
     let connection = &mut establish_connection();
     let delete = diesel::delete(
         schema::polls::table.filter(
@@ -179,54 +153,98 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
 
     match delete {
         Err(err) => {
-            reply::with_status(
-                format!("Failed to delete poll with id {poll_id}: {err}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ).into_response()
+            Err(ContextError::from_db(err, "deleting", "poll", ContextId::Uuid(poll_id)))
         },
         Ok(0) => {
-            reply::with_status(reply::reply(), StatusCode::NOT_FOUND).into_response()
+            Err(ContextError::poll_not_found(&poll_id))
         },
         Ok(_) => {
-            reply::with_status(reply::reply(), StatusCode::NO_CONTENT).into_response()
+            Ok(())
         },
     }
 }
 
-#[cfg(feature = "server")]
-pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
-    // fetch poll from db
-    let poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
-        .inner_join(schema::users::table)
-        .select((
-            models::Poll::as_select(),
-            models::User::as_select(),
-        ))
-        .first(connection);
-
-    let (db_poll, db_user) = match poll_result {
-        Err(err @ DbError::NotFound) => {
-            return Err(error::db_get(err, StatusCode::NOT_FOUND, "poll/owner", None));
-        }
-        Err(err) => {
-            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "poll/owner", None));
-        },
-        Ok(r) => r,
-    };
-
-    let options_result: Result<Vec<models::PollOption>, DbError> = models::PollOption::belonging_to(&db_poll)
-        .select(models::PollOption::as_select())
-        .load(connection);
-
-    let db_options = match options_result {
-        Err(err) => {
-            return Err(error::db_get(err, StatusCode::INTERNAL_SERVER_ERROR, "option", Some("poll")));
-        },
-        Ok(o) => o,
-    };
-
-    Ok(db_poll.into(db_user, db_options))
+#[server]
+pub async fn list_ssr() -> Result<Vec<voting::Poll>, ServerFnError<ContextError>> {
+    match list() {
+        Ok(polls) => Ok(polls),
+        Err(err) => Err(ServerFnError::WrappedServerError(err)),
+    }
 }
+
+#[server]
+pub async fn new_ssr(
+    user_id: Uuid,
+    settings: voting::UnvalidatedCreatePollSettings,
+) -> Result<voting::Poll, ServerFnError<ContextError>> {
+    match new(user_id, settings.try_into()?) {
+        Ok(poll) => Ok(poll),
+        Err(err) => Err(ServerFnError::WrappedServerError(err)),
+    }
+}
+
+#[server]
+pub async fn get_ssr(id: Uuid) -> Result<voting::Poll, ServerFnError<ContextError>> {
+    let connection = &mut establish_connection();
+    match get(connection, &id) {
+        Ok(poll) => Ok(poll),
+        Err(err) => Err(ServerFnError::WrappedServerError(err)),
+    }
+}
+
+#[server]
+pub async fn update_ssr(
+    poll_id: Uuid,
+    user_id: Uuid,
+    settings: voting::UnvalidatedUpdatePollSettings,
+) -> Result<voting::Poll, ServerFnError<ContextError>> {
+    match update(poll_id, user_id, settings.try_into()?) {
+        Ok(poll) => Ok(poll),
+        Err(err) => Err(ServerFnError::WrappedServerError(err)),
+    }
+}
+
+#[server]
+pub async fn delete_ssr(poll_id: Uuid, user_id: Uuid) -> Result<(), ServerFnError<ContextError>> {
+    match delete(poll_id, user_id) {
+        Ok(_) => Ok(()),
+        Err(err) => Err(ServerFnError::WrappedServerError(err)),
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn new_api(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
+    match new(user_id, settings) {
+        Err(err) => err.into(),
+        Ok(p) => reply::with_status(reply::json(&p), StatusCode::CREATED).into_response(),
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn get_api(id: Uuid) -> Response {
+    let connection = &mut establish_connection();
+    match get(connection, &id) {
+        Err(err) => err.into(),
+        Ok(poll) => reply::json(&poll).into_response(),
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn update_api(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Response {
+    match update(poll_id, user_id, settings) {
+        Err(err) => err.into(),
+        Ok(p) => reply::json(&p).into_response(),
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn delete_api(poll_id: Uuid, user_id: Uuid) -> Response {
+    match delete(poll_id, user_id) {
+        Err(err) => err.into(),
+        Ok(_) => reply::with_status(reply::reply(), StatusCode::NO_CONTENT).into_response(),
+    }
+}
+
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
@@ -236,7 +254,7 @@ mod tests {
     use warp::hyper::body;
 
     async fn setup(settings: &voting::CreatePollSettings) -> Result<voting::Poll, Box<dyn StdError>> {
-        let res = new(Uuid::nil(), voting::CreatePollSettings::from(settings.clone()));
+        let res = new_api(Uuid::nil(), voting::CreatePollSettings::from(settings.clone()));
         let res_bytes = body::to_bytes(res.into_body()).await?;
         let res_poll: voting::Poll = serde_json::from_reader(res_bytes.as_ref())?;
 
@@ -244,7 +262,7 @@ mod tests {
     }
 
     async fn teardown(poll: voting::Poll) -> Result<(), Box<dyn StdError>> {
-        let res = delete(poll.id.0, poll.owner_id.0);
+        let res = delete_api(poll.id.0, poll.owner_id.0);
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         Ok(())
     }
