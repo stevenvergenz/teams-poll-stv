@@ -2,11 +2,23 @@
 .visible {
   visibility: visible;
 }
+.relative {
+  position: relative;
+}
 .static {
   position: static;
 }
 .container {
   width: 100%;
+}
+.my-2 {
+  margin-block: calc(var(--spacing) * 2);
+}
+.my-4 {
+  margin-block: calc(var(--spacing) * 4);
+}
+.block {
+  display: block;
 }
 .flex {
   display: flex;
@@ -48,11 +60,14 @@
 .bg-light-bg2 {
   background-color: var(--color-light-bg2);
 }
+.px-4 {
+  padding-inline: calc(var(--spacing) * 4);
+}
 .py-2 {
   padding-block: calc(var(--spacing) * 2);
 }
-.py-8 {
-  padding-block: calc(var(--spacing) * 8);
+.py-3 {
+  padding-block: calc(var(--spacing) * 3);
 }
 .text-center {
   text-align: center;

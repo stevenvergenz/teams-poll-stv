@@ -147,8 +147,8 @@ impl CreatePollSettings {
     }
 }
 
-const TITLE_LENGTH_BOUNDS: RangeInclusive<usize> = 3usize ..= i32::MAX as usize;
-const OPTIONS_LENGTH_BOUNDS: RangeInclusive<usize> = 2usize ..= i32::MAX as usize;
+const TITLE_LENGTH_BOUNDS: RangeInclusive<usize> = 3usize ..= 200usize;
+const OPTIONS_LENGTH_BOUNDS: RangeInclusive<usize> = 2usize ..= 50usize;
 const WINNERS_BOUNDS: RangeInclusive<i32> = 1 ..= u8::MAX as i32;
 const VOTES_BOUNDS: RangeInclusive<i64> = 2i64 ..= i32::MAX as i64;
 

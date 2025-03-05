@@ -5,16 +5,13 @@ use std::str::FromStr;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
-use warp::reply::Response;
 
-#[cfg(feature = "server")]
-use std::convert::From;
 #[cfg(feature = "server")]
 use diesel::result::{DatabaseErrorKind, Error as DbError};
 #[cfg(feature = "server")]
 use warp::http::StatusCode;
 #[cfg(feature = "server")]
-use warp::reply::{self, Reply};
+use warp::reply::{self, Reply, Response};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum ContextId {

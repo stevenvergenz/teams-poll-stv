@@ -174,9 +174,9 @@ pub async fn list_ssr() -> Result<Vec<voting::Poll>, ServerFnError<ContextError>
 
 #[server]
 pub async fn new_ssr(
-    user_id: Uuid,
     settings: voting::UnvalidatedCreatePollSettings,
 ) -> Result<voting::Poll, ServerFnError<ContextError>> {
+    let user_id = Uuid::nil(); // todo: get from session
     match new(user_id, settings.try_into()?) {
         Ok(poll) => Ok(poll),
         Err(err) => Err(ServerFnError::WrappedServerError(err)),
