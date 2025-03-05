@@ -12,8 +12,10 @@ impl Id {
     pub const fn nil() -> Id {
         Id(Uuid::nil())
     }
+
+    #[cfg(feature = "server")]
     pub fn new() -> Id {
-        Id(Uuid::new_v4())
+        Id(Uuid::now_v7())
     }
 }
 impl Display for Id {

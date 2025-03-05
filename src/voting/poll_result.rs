@@ -1,16 +1,25 @@
-use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 use chrono::{DateTime, Utc};
-use rand::{self, SeedableRng, rngs::StdRng, prelude::SliceRandom};
 use serde::Serialize;
 
-use super::ballot::Ballot;
 use super::id::{Id, WeakId};
 use super::poll::Poll;
 
+#[cfg(feature = "server")]
+use std::collections::HashMap;
+
+#[cfg(feature = "server")]
+use rand::{self, SeedableRng, rngs::StdRng, prelude::SliceRandom};
+
+#[cfg(feature = "server")]
+use super::ballot::Ballot;
+
 /// A displayable version of HashMap<&u32, Vec<&Ballot>>
+#[cfg(feature = "server")]
 struct Tally<'a>(&'a HashMap<&'a WeakId, Vec<&'a Ballot>>);
+
+#[cfg(feature = "server")]
 impl<'a> Display for Tally<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let mut sorted_tally: Vec<TallyItem> = self.0.iter()
@@ -63,7 +72,10 @@ impl Ord for TallyItem {
 }
 
 /// A displayable version of Vec<&Ballot>
+#[cfg(feature = "server")]
 struct BallotList<'a>(pub &'a [Ballot]);
+
+#[cfg(feature = "server")]
 impl<'a> std::fmt::Display for BallotList<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "BallotList [")?;
@@ -86,6 +98,7 @@ pub struct PollResult {
     pub eliminated: Vec<WeakId>,
 }
 
+#[cfg(feature = "server")]
 impl PollResult {
     pub fn evaluate(poll: &Poll, ballots: &[Ballot], max_rounds: u32, rng_seed: &[u8; 32]) -> PollResult {
         println!("{}", BallotList(&ballots));
@@ -189,7 +202,7 @@ impl PollResult {
 
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "web")))]
 mod tests {
     use super::super::*;
 

@@ -11,11 +11,11 @@ pub fn Layout() -> Element {
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         div {
             id: "layout",
-            class: "min-h-screen flex flex-col items-center",
+            class: "min-h-screen flex flex-col items-center bg-light-bg1",
             header {
-                class: "w-page bg-bg2",
+                class: "w-page bg-light-bg2",
                 nav {
-                    class: "flex flex-row py-8 gap-8",
+                    class: "flex flex-row py-2 gap-2",
                     Link { to: Route::Home {}, "Home" }
                     Link { to: Route::New {}, "New" }
                 }
@@ -26,8 +26,8 @@ pub fn Layout() -> Element {
                 Outlet::<Route> {}
             }
             footer {
-                class: "w-page bg-bg2 py-8 text-center",
-                "© 2025 Steven Vergenz"
+                class: "w-page bg-light-bg2 py-2 text-center",
+                "© 2025 Microsoft Corporation. All rights reserved."
             }
         }
     }

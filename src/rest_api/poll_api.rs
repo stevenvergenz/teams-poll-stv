@@ -1,13 +1,66 @@
-use diesel::prelude::*;
-use diesel::result::Error as DbError;
+use dioxus::prelude::*;
+use std::collections::HashMap;
 use uuid::Uuid;
-use warp::http::StatusCode;
-use warp::reply::{self, Reply, Response};
 
-use crate::voting;
+use crate::{error, voting};
+
+#[cfg(feature = "server")]
+use diesel::prelude::*;
+#[cfg(feature = "server")]
+use diesel::result::Error as DbError;
+#[cfg(feature = "server")]
+use warp::{
+    http::StatusCode,
+    reply::{self, Reply, Response},
+};
+#[cfg(feature = "server")]
 use super::db::{establish_connection, models, schema};
-use crate::error;
 
+#[server]
+pub async fn list() -> Result<Vec<voting::Poll>, ServerFnError> {
+    let connection = &mut establish_connection();
+    let results: Result<Vec<(models::Poll, models::User)>, DbError> = schema::polls::table
+        .inner_join(schema::users::table)
+        .inner_join(schema::polloptions::table)
+        .select((
+            models::Poll::as_select(),
+            models::User::as_select(),
+        ))
+        .load(connection);
+
+    let polls_users: Vec<(models::Poll, models::User)> = if let Err(e) = results {
+        return Err(ServerFnError::ServerError(e.to_string()));
+    }
+    else {
+        results.unwrap()
+    };
+
+    let results: Result<Vec<models::PollOption>, DbError> = schema::polloptions::table
+        .filter(schema::polloptions::poll_id.eq_any(polls_users.iter().map(|(p, _)| p.id).collect::<Vec<Uuid>>()))
+        .select(models::PollOption::as_select())
+        .load(connection);
+
+    let options = if let Err(e) = results {
+        return Err(ServerFnError::ServerError(e.to_string()));
+    }
+    else {
+        results.unwrap()
+    };
+
+    let mut poll_options = HashMap::new();
+    for option in options {
+        poll_options.entry(option.poll_id).or_insert(vec![]).push(option);
+    }
+
+    let polls = polls_users.into_iter().map(|(p, u)| {
+        let options = poll_options.remove(&p.id).unwrap_or(vec![]);
+        p.into(u, options)
+    }).collect();
+
+    Ok(polls)
+}
+
+#[cfg(feature = "server")]
 pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
     let connection = &mut establish_connection();
 
@@ -60,6 +113,7 @@ pub fn new(user_id: Uuid, settings: voting::CreatePollSettings) -> Response {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn get(id: Uuid) -> Response {
     let connection = &mut establish_connection();
     match get_internal(connection, &id) {
@@ -68,6 +122,7 @@ pub fn get(id: Uuid) -> Response {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings) -> Response {
     let settings = models::UpdatePollSettings::from(settings);
 
@@ -112,6 +167,7 @@ pub fn update(poll_id: Uuid, user_id: Uuid, settings: voting::UpdatePollSettings
     }
 }
 
+#[cfg(feature = "server")]
 pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     let connection = &mut establish_connection();
     let delete = diesel::delete(
@@ -137,6 +193,7 @@ pub fn delete(poll_id: Uuid, user_id: Uuid) -> Response {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::Poll, error::HttpGetError> {
     // fetch poll from db
     let poll_result: Result<(models::Poll, models::User), DbError> = schema::polls::table.find(id)
@@ -168,15 +225,10 @@ pub fn get_internal(connection: &mut PgConnection, id: &Uuid) -> Result<voting::
         Ok(o) => o,
     };
 
-    let poll: voting::Poll = match (db_poll, db_options, db_user).try_into() {
-        Err(err) => return Err(error::HttpGetError::from(err)),
-        Ok(p) => p,
-    };
-
-    Ok(poll)
+    Ok(db_poll.into(db_user, db_options))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use std::error::Error as StdError;
 

@@ -1,12 +1,16 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::ops::RangeInclusive;
-use std::convert::From;
-
-use chrono::{DateTime, Utc};
-use diesel::result::{DatabaseErrorKind, Error as DbError};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+#[cfg(feature = "server")]
+use std::convert::From;
+#[cfg(feature = "server")]
+use diesel::result::{DatabaseErrorKind, Error as DbError};
+#[cfg(feature = "server")]
 use warp::http::StatusCode;
+#[cfg(feature = "server")]
 use warp::reply::{self, Reply};
 
 #[derive(Debug)]
@@ -127,7 +131,7 @@ pub fn ballot_duplicate_selection(option_id: u32, pref_indices: (usize, usize)) 
     }
 }
 
-
+#[cfg(feature = "server")]
 #[derive(Debug)]
 pub struct HttpGetError {
     pub code: StatusCode,
@@ -135,6 +139,7 @@ pub struct HttpGetError {
     source: Option<DbError>,
 }
 
+#[cfg(feature = "server")]
 impl HttpGetError {
     pub fn into_response(self) -> reply::Response {
         if self.code == StatusCode::NOT_FOUND {
@@ -146,14 +151,17 @@ impl HttpGetError {
     }
 }
 
+#[cfg(feature = "server")]
 impl Display for HttpGetError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {:?}", self.message, self.source)
     }
 }
 
+#[cfg(feature = "server")]
 impl Error for HttpGetError { }
 
+#[cfg(feature = "server")]
 impl From<ValidationError> for HttpGetError {
     fn from(value: ValidationError) -> Self {
         HttpGetError {
@@ -164,6 +172,7 @@ impl From<ValidationError> for HttpGetError {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn db_get(source: DbError, code: StatusCode, subject: &str, object: Option<&str>) -> HttpGetError {
     let message = match object {
         Some(object) => format!("Failed to retrieve {object} of {subject}"),
@@ -172,6 +181,7 @@ pub fn db_get(source: DbError, code: StatusCode, subject: &str, object: Option<&
     HttpGetError { message, code, source: Some(source) }
 }
 
+#[cfg(feature = "server")]
 pub fn db_insert(source: DbError, subject: &str) -> HttpGetError {
     match source {
         DbError::DatabaseError(DatabaseErrorKind::UniqueViolation, ..) => {

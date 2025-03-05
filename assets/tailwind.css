@@ -35,15 +35,21 @@
 .items-center {
   align-items: center;
 }
-.gap-8 {
-  gap: calc(var(--spacing) * 8);
+.gap-2 {
+  gap: calc(var(--spacing) * 2);
 }
 .border {
   border-style: var(--tw-border-style);
   border-width: 1px;
 }
-.bg-bg2 {
-  background-color: var(--color-bg2);
+.bg-light-bg1 {
+  background-color: var(--color-light-bg1);
+}
+.bg-light-bg2 {
+  background-color: var(--color-light-bg2);
+}
+.py-2 {
+  padding-block: calc(var(--spacing) * 2);
 }
 .py-8 {
   padding-block: calc(var(--spacing) * 8);
@@ -61,8 +67,9 @@
   filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
 }
 :root, :host {
-  --spacing: 1px;
-  --color-bg2: #f1f1f1;
+  --spacing: 4px;
+  --color-light-bg1: #f9f9f9;
+  --color-light-bg2: #f1f1f1;
 }
 html, body, #main {
   min-height: 100vh;

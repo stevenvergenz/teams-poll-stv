@@ -1,14 +1,20 @@
-mod db;
-mod poll_api;
-mod ballot_api;
-mod result_api;
+pub mod poll_api;
+#[cfg(feature = "server")]
+pub mod ballot_api;
+#[cfg(feature = "server")]
+pub mod result_api;
 
 use std::env;
 use uuid::Uuid;
-use warp::Filter;
 
 use crate::voting::{UnvalidatedCreateBallot, CreatePollSettings, UpdatePollSettings};
 
+#[cfg(feature = "server")]
+use warp::Filter;
+#[cfg(feature = "server")]
+mod db;
+
+#[cfg(feature = "server")]
 pub async fn setup() {
     // define the poll API
 

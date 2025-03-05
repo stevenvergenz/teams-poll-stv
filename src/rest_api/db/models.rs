@@ -29,10 +29,9 @@ pub struct Poll {
     pub rng_seed: Vec<u8>,
 }
 
-impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
-    type Error = error::ValidationError;
-    fn try_into(self) -> Result<voting::Poll, Self::Error> {
-        let (Poll {
+impl Poll {
+    pub fn into(self, owner: User, options: Vec<PollOption>) -> voting::Poll {
+        let Self {
             id,
             title,
             winner_count,
@@ -43,7 +42,7 @@ impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
             created_at,
             closed_at,
             rng_seed,
-        }, options, owner) = self;
+        } = self;
 
         let settings = voting::CreatePollSettings {
             id: Some(id),
@@ -65,7 +64,7 @@ impl TryInto<voting::Poll> for (Poll, Vec<PollOption>, User) {
         poll.created_at = created_at.and_utc();
         poll.closed_at = closed_at.map(|t| t.and_utc());
 
-        Ok(poll)
+        poll
     }
 }
 

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-
+use uuid::Uuid;
 use super::{
     home::Home,
     layout::Layout,
@@ -18,7 +18,7 @@ pub enum Route {
     New {},
 
     #[route("/poll/:id")]
-    Poll { id: String },
+    Poll { id: Uuid },
 }
 
 #[component]

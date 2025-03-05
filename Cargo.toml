@@ -7,14 +7,22 @@ edition = "2021"
 [dependencies]
 warp = { version = "0.3", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
-uuid = { version = "1.10.0", features = ["serde", "v4"], optional = true }
-chrono = { version = "0.4.38", features = ["std", "clock", "now", "serde"], optional = true }
-serde_json = { version = "1.0.127", optional = true }
-serde = { version = "1.0.209", features = ["derive"], optional = true }
+chrono = { version = "0.4.38", features = ["std", "clock", "now", "serde", "wasmbind"] }
+serde_json = { version = "1.0.127" }
+serde = { version = "1.0.209", features = ["derive"] }
 rand = { version = "0.8.5", optional = true }
 diesel = { version = "2.2.4", features = ["chrono", "postgres", "uuid"], optional = true }
 dotenvy = { version = "0.15.7", optional = true }
 dioxus = { version = "0.6.0", features = ["router", "fullstack"], optional = true }
+
+
+[target.'cfg(not(all(target_arch = "wasm32", target_vendor = "unknown", target_os = "unknown")))'.dependencies.uuid]
+version = "1.10.0"
+features = ["std", "serde", "v7"]
+
+[target.'cfg(all(target_arch = "wasm32", target_vendor = "unknown", target_os = "unknown"))'.dependencies.uuid]
+version = "1.10.0"
+features = ["std", "serde", "js"]
 
 [features]
 default = ["web"]
@@ -25,13 +33,9 @@ server = [
     "dioxus/server",
     "dep:warp",
     "dep:tokio",
-    "dep:uuid",
-    "dep:chrono",
-    "dep:serde",
-    "dep:serde_json",
-    "dep:rand",
     "dep:diesel",
     "dep:dotenvy",
+    "dep:rand",
 ]
 
 [profile]

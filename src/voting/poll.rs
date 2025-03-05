@@ -32,6 +32,7 @@ pub struct Poll {
     pub rng_seed: [u8; 32],
 }
 
+#[cfg(feature = "server")]
 impl Poll {
     pub fn new(settings: CreatePollSettings, options: Vec<PollOption>, owner: User, rng_seed: Vec<u8>) -> Self {
         let mut poll = Self::from(settings);
@@ -44,6 +45,7 @@ impl Poll {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<CreatePollSettings> for Poll {
     fn from(CreatePollSettings {
         id,
