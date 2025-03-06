@@ -23,8 +23,9 @@ use super::db::{establish_connection, models, schema};
 fn list() -> Result<Vec<voting::Poll>, ContextError> {
     let connection = &mut establish_connection();
     let results: Result<Vec<(models::Poll, models::User)>, DbError> = schema::polls::table
+        .filter(schema::polls::closed_at.is_null())
+        .order(schema::polls::created_at.desc())
         .inner_join(schema::users::table)
-        .inner_join(schema::polloptions::table)
         .select((
             models::Poll::as_select(),
             models::User::as_select(),

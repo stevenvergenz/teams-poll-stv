@@ -3,38 +3,25 @@ use crate::rest_api::poll_api::list_ssr;
 
 #[component]
 pub fn Home() -> Element {
-    let polls = use_server_future(list_ssr)?;
-    let poll_items = match &*polls.read_unchecked() {
-        Some(Ok(polls)) => {
-            rsx! {
-                p { "{polls.len()} items" }
-                ul {
-                    for p in polls {
-                        li {
-                            Link {
-                                to: format!("/poll/{}", p.id),
-                                title: p.title.as_str(),
-                            }
-                        }
-                    }
+    let future = use_server_future(list_ssr)?;
+    let readable = &*future.read();
+    let polls = match readable {
+        None => {
+            return rsx! {
+                div {
+                    h2 { "Loading..." }
                 }
-            }
+            };
         },
         Some(Err(e)) => {
-            rsx! {
+            return rsx! {
                 div {
                     h2 { "Error" }
                     p { "{e}" }
                 }
-            }
+            };
         },
-        None => {
-            rsx! {
-                div {
-                    h2 { "Loading..." }
-                }
-            }
-        }
+        Some(Ok(polls)) => polls,
     };
 
     rsx! {
@@ -43,7 +30,18 @@ pub fn Home() -> Element {
             h1 { "Polls" }
         }
         div {
-            {poll_items}
+            p { "{polls.len()} items" }
+            ul {
+                for p in polls {
+                    li {
+                        Link {
+                            to: format!("/poll/{}", p.id),
+                            title: p.title.as_str(),
+                            { p.title.as_str() }
+                        }
+                    }
+                }
+            }
         }
     }
 }
